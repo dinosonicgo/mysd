@@ -1,14 +1,14 @@
 // static/js/app.js
 
 /**
- * v16.2 (语法修正完整版): 修正了 v16.1 版本中因注释位置不当而引入的致命 SyntaxError。此错误导致整个 JS 档案无法解析和执行，是造成所有按鈕无反应的根本原因。此版本恢复了程式码的语法正确性，并保证所有原有功能和代码的完整性，绝无删减。
- * v16.1 (轮询验证与路径修正版): 引入了 `verifyUrl` 和轮询重试机制，确保前端在连接前会验证 Tunnel URL 的有效性，并在后端未准备好时耐心等待。修正了 Service Worker 的注册路径。
- * v16.0 (智慧同步版): 引入前端自动重连机制以配合后端守护进程。
+ * v16.3 (作用域修正版): 修正了 v16.2 版本中因函式作用域錯誤導致事件監聽器綁定失敗的致命 bug。將 handleDownloadSubmit 和 filterModels 函式移回正確的 DOMContentLoaded 作用域內，確保所有頁面交互功能（按鈕點擊、頁籤切換等）能夠被正確初始化和執行。
+ * v16.2 (語法修正版): 修正了因註釋位置不當而引入的致命 SyntaxError。
+ * v16.1 (輪詢驗證與路徑修正版): 引入了 `verifyUrl` 和輪詢重試機制，解決遠端載入失敗問題。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- 元素选择器 (通用) ---
+    // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
     const navGemini = getById('nav-gemini');
     const navComfyUI = getById('nav-comfyui');
@@ -17,14 +17,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const pages = [geminiPage, comfyUIPage];
     const navLinks = [navGemini, navComfyUI];
 
-    // --- 元素选择器 (Gemini) ---
+    // --- 元素選擇器 (Gemini) ---
     const geminiChatWindow = getById('gemini-chat-window');
     const geminiForm = getById('gemini-input-form');
     const geminiInput = getById('gemini-input');
     const geminiSendBtn = getById('gemini-send-btn');
     const geminiStartBtn = getById('gemini-start-btn');
 
-    // --- 元素选择器 (ComfyUI - 参数设定) ---
+    // --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adetailerOptionsDiv = getById('adetailer-options');
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
     
-    // --- 元素选择器 (ComfyUI - 图像输入) ---
+    // --- 元素選擇器 (ComfyUI - 圖像輸入) ---
     const img2imgTab = getById('img2img-tab');
     const img2imgFileInput = getById('img2img-file-input');
     const img2imgUploadArea = getById('img2img-upload-area');
@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const maskFilename = getById('mask-filename');
     const maskClearBtn = getById('mask-clear-btn');
 
-    // --- 元素选择器 (ComfyUI - ControlNet) ---
+    // --- 元素選擇器 (ComfyUI - ControlNet) ---
     const controlnetTab = getById('controlnet-tab');
     const enableControlnetSwitch = getById('comfy-enable-controlnet');
     const controlnetOptionsContainer = getById('controlnet-options-container');
@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const controlnetStrengthSlider = getById('comfy-controlnet-strength');
     const controlnetStrengthValueLabel = getById('controlnet-strength-value-label');
     
-    // --- 元素选择器 (ComfyUI - 影片生成) ---
+    // --- 元素選擇器 (ComfyUI - 影片生成) ---
     const videoMainPrompt = getById('video-main-prompt');
     const videoOptimizePositiveCheckbox = getById('video-optimize-positive-checkbox');
     const videoAiOptimizeCheckbox = getById('video-ai-optimize-checkbox');
@@ -112,14 +112,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoAugmentationLevelSlider = getById('video-augmentation-level');
     const videoAugmentationLevelLabel = getById('video-augmentation-level-label');
 
-    // --- 进度条元素 ---
+    // --- 進度條元素 ---
     const comfyProgressContainer = getById('comfy-progress-container');
     const comfyProgressBar = getById('comfy-progress-bar');
     const comfyProgressText = getById('comfy-progress-text');
     
     let comfyStatusWs = null;
 
-    // --- 元素选择器 (图片/影片 Modal) ---
+    // --- 元素選擇器 (圖片/影片 Modal) ---
     const imageModal = getById('image-modal');
     const modalImage = getById('modal-image');
     const modalVideo = getById('modal-video');
@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         optimization_mode: getById('modal-optimization-mode'),
     };
     
-    // --- 元素选择器 (模型/LoRA 选择 Modal) ---
+    // --- 元素選擇器 (模型/LoRA 選擇 Modal) ---
     const modelSelectionModal = getById('model-selection-modal');
     const modelSelectionGrid = getById('model-selection-grid');
     let bsModelSelectionModal = null;
@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loraConfirmSelectionBtn = getById('lora-confirm-selection-btn');
     let bsLoraSelectionModal = null;
 
-    // --- 元素选择器 (通知 & 历史纪录管理) ---
+    // --- 元素選擇器 (通知 & 歷史紀錄管理) ---
     const notificationStatusBadge = getById('notification-status-badge');
     const enableNotificationsBtn = getById('enable-notifications-btn');
     const historyManagementBtns = getById('history-management-buttons');
@@ -180,15 +180,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const historySelectionCount = getById('history-selection-count');
     const historySelectionCountDelete = getById('history-selection-count-delete');
     
-    // --- 元素选择器 (预设提示词按钮) ---
+    // --- 元素選擇器 (預設提示詞按鈕) ---
     const negativePromptSetDefaultBtn = getById('negative-prompt-set-default-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
 
-    // --- 元素选择器 (模型下载) ---
+    // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
     const modelFilterCheckboxes = document.querySelectorAll('.model-filter-checkbox');
 
-    // --- 元素选择器 (GM 登入) ---
+    // --- 元素選擇器 (GM 登入) ---
     const gmLoginIcon = getById('gm-login-icon');
     const gmLoginForm = getById('gm-login-form');
     const gmPasswordInput = getById('gm-password-input');
@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
     historyLoadingIndicator.className = 'text-center text-muted p-3 col-12';
     historyLoadingIndicator.style.display = 'none';
 
-    // --- 状态变数 ---
+    // --- 狀態變數 ---
     let userContext = { user_type: 'local', device_id: 'local' };
     let activeDeviceUrl = window.location.origin;
     let sharedConfig = { devices: {} };
@@ -226,14 +226,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const GM_PASSWORD = "781111";
     const GITHUB_CONFIG_URL = 'https://dinosonicgo.github.io/mysd/config.json';
 
-    // --- 预设提示词常数 ---
+    // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
-    const DEFAULT_FIXED_PROMPT = "超非常精致美丽的脸与眼睛，极度精致的细节，杰作，最高品质，史诗级，惊艳的，令人赞叹的艺术";
+    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉與眼睛，極度精緻的細節，傑作，最高品質，史詩級，驚豔的，令人讚嘆的藝術";
 
-    // --- 核心函式: API 请求与使用者上下文 ---
+    // --- 核心函式: API 請求與使用者上下文 ---
     async function fetchWithUserContext(path, options = {}) {
         if (!activeDeviceUrl) {
-            throw new Error("没有可用的装置 URL。请确保已选择一个在线装置。");
+            throw new Error("沒有可用的裝置 URL。請確保已選擇一個在線裝置。");
         }
         const fullUrl = new URL(path, activeDeviceUrl).href;
         const headers = new Headers(options.headers || {});
@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetch(fullUrl, options);
     }
     
-    // --- 核心函式: 装置切换与资料载入 ---
+    // --- 核心函式: 裝置切換與資料載入 ---
     async function verifyUrl(url) {
         if (!url) return false;
         try {
@@ -251,13 +251,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(checkUrl, { method: 'HEAD', mode: 'no-cors' });
             return true;
         } catch (e) {
-            console.warn(`URL 验证失败: ${url}`, e.message);
+            console.warn(`URL 驗證失敗: ${url}`, e.message);
             return false;
         }
     }
 
     async function switchDevice(deviceId, newUrl) {
-        console.log(`正在切换到装置: ${deviceId}`);
+        console.log(`正在切換到裝置: ${deviceId}`);
         userContext.device_id = deviceId;
         activeDeviceUrl = newUrl;
         localStorage.setItem('gm_last_device', deviceId);
@@ -271,12 +271,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         document.body.style.cursor = 'default';
         if(comfyGenerateBtn) comfyGenerateBtn.disabled = false;
-        console.log(`已成功切换到 ${deviceId}。`);
+        console.log(`已成功切換到 ${deviceId}。`);
     }
     
     async function reloadDataForActiveDevice() {
-        console.log(`正在为装置 ${userContext.device_id} 重新载入所有资料...`);
-        if(comfyStatusText) comfyStatusText.textContent = `正在载入装置 ${userContext.device_id} 的资料...`;
+        console.log(`正在為裝置 ${userContext.device_id} 重新載入所有資料...`);
+        if(comfyStatusText) comfyStatusText.textContent = `正在載入裝置 ${userContext.device_id} 的資料...`;
         
         await Promise.all([
             fetchAndPopulateCheckpoints(),
@@ -287,8 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
             initializeHistory()
         ]);
     
-        if(comfyStatusText) comfyStatusText.textContent = '请在左侧设定参数并点击生成。';
-        console.log("资料重新载入完成。");
+        if(comfyStatusText) comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
+        console.log("資料重新載入完成。");
     }
 
     async function loadSharedConfigAndInitialize(retryCount = 0) {
@@ -296,11 +296,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
-            if (!response.ok) throw new Error('无法从 GitHub 获取共享设定档。');
+            if (!response.ok) throw new Error('無法從 GitHub 獲取共享設定檔。');
             sharedConfig = await response.json();
         } catch (error) {
             console.error(error);
-            if(userStatusDisplay) userStatusDisplay.textContent = '错误: 无法载入远端设定';
+            if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
             return;
         }
 
@@ -322,23 +322,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (targetDevice) {
                 const targetUrl = sharedConfig.devices[targetDevice].url;
-                if(userStatusDisplay) userStatusDisplay.textContent = `正在验证 ${targetDevice} 的连线... (${retryCount + 1}/${MAX_RETRIES})`;
+                if(userStatusDisplay) userStatusDisplay.textContent = `正在驗證 ${targetDevice} 的連線... (${retryCount + 1}/${MAX_RETRIES})`;
                 
                 const isUrlVerified = await verifyUrl(targetUrl);
                 if (isUrlVerified) {
                     await switchDevice(targetDevice, targetUrl);
                 } else {
-                    console.warn(`URL ${targetUrl} 验证失败，将在 5 秒后重试...`);
+                    console.warn(`URL ${targetUrl} 驗證失敗，將在 5 秒後重試...`);
                     if (retryCount < MAX_RETRIES) {
                         setTimeout(() => loadSharedConfigAndInitialize(retryCount + 1), 5000);
                     } else {
-                        alert(`无法连接到装置 ${targetDevice}。请检查后端服务是否正常运行。`);
-                        if(userStatusDisplay) userStatusDisplay.textContent = `错误: 连接 ${targetDevice} 超时`;
+                        alert(`無法連接到裝置 ${targetDevice}。請檢查後端服務是否正常運行。`);
+                        if(userStatusDisplay) userStatusDisplay.textContent = `錯誤: 連接 ${targetDevice} 超時`;
                     }
                 }
             } else {
                 updateDeviceSelectorUI();
-                alert('目前没有任何远端装置在线。');
+                alert('目前沒有任何遠端裝置在線。');
             }
         } else {
             userContext.device_id = localStorage.getItem('device_id') || 'local_pc';
@@ -362,8 +362,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const newDeviceConfig = (newConfig.devices || {})[userContext.device_id];
 
             if (newDeviceConfig && currentDeviceConfig && newDeviceConfig.url !== currentDeviceConfig.url) {
-                console.log(`[智慧同步] 侦测到装置 ${userContext.device_id} 的 URL 已变更。`);
-                console.log(`  -> 旧 URL: ${currentDeviceConfig.url}`);
+                console.log(`[智慧同步] 偵測到裝置 ${userContext.device_id} 的 URL 已變更。`);
+                console.log(`  -> 舊 URL: ${currentDeviceConfig.url}`);
                 console.log(`  -> 新 URL: ${newDeviceConfig.url}`);
                 
                 const isUrlVerified = await verifyUrl(newDeviceConfig.url);
@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if(userStatusDisplay) {
                         const originalText = `GM @ ${userContext.device_id}`;
-                        userStatusDisplay.textContent = `${originalText} (连线已自动恢复)`;
+                        userStatusDisplay.textContent = `${originalText} (連線已自動恢復)`;
                         setTimeout(() => { userStatusDisplay.textContent = originalText; }, 5000);
                     }
 
@@ -382,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         connectStatusWebSocket(trackedPromptId);
                     }
                 } else {
-                    console.warn(`[智慧同步] 新的 URL ${newDeviceConfig.url} 验证失败，暂不切换。`);
+                    console.warn(`[智慧同步] 新的 URL ${newDeviceConfig.url} 驗證失敗，暫不切換。`);
                 }
             } else {
                 sharedConfig = newConfig;
@@ -390,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateDeviceSelectorUI();
 
         } catch (error) {
-            console.error("[智慧同步] 同步远端设定档失败:", error);
+            console.error("[智慧同步] 同步遠端設定檔失敗:", error);
         }
     }
 
@@ -399,11 +399,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
         if (userContext.user_type === 'gm') {
             gmLoginIcon.innerHTML = '<i class="bi bi-unlock-fill text-warning"></i>';
-            gmLoginIcon.title = '已登入为 GM - 点击登出';
+            gmLoginIcon.title = '已登入為 GM - 點擊登出';
             
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'block';
-            if (userStatusDisplay && !userStatusDisplay.textContent.includes("正在验证")) {
-                 userStatusDisplay.textContent = `GM @ ${userContext.device_id || '未选择'}`;
+            if (userStatusDisplay && !userStatusDisplay.textContent.includes("正在驗證")) {
+                 userStatusDisplay.textContent = `GM @ ${userContext.device_id || '未選擇'}`;
             }
             
             if (deviceSelectionList) {
@@ -421,12 +421,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         a.className = `dropdown-item device-select-btn ${userContext.device_id === id ? 'active' : ''}`;
                         a.href = '#';
                         a.dataset.device = id;
-                        a.innerHTML = `${id} <span class="badge bg-${isOnline ? 'success' : 'secondary'} float-end">${isOnline ? '在线' : '离线'}</span>`;
+                        a.innerHTML = `${id} <span class="badge bg-${isOnline ? 'success' : 'secondary'} float-end">${isOnline ? '在線' : '離線'}</span>`;
                         li.appendChild(a);
                         deviceSelectionList.appendChild(li);
                     });
                 } else {
-                    deviceSelectionList.innerHTML = '<li><a class="dropdown-item disabled" href="#">无可用装置</a></li>';
+                    deviceSelectionList.innerHTML = '<li><a class="dropdown-item disabled" href="#">無可用裝置</a></li>';
                 }
     
                 deviceSelectionList.querySelectorAll('.device-select-btn').forEach(btn => {
@@ -494,14 +494,14 @@ document.addEventListener('DOMContentLoaded', () => {
             geminiWs.close();
         }
         geminiWs = new WebSocket(wsUrl);
-        geminiWs.onopen = () => console.log("已连接到 Gemini WebSocket 端点。");
+        geminiWs.onopen = () => console.log("已連接到 Gemini WebSocket 端點。");
         geminiWs.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'response') {
                     const messageText = msg.data;
                     if (messageText.includes('[GEMINI_ERROR]')) {
-                        addMessageToChat(`<strong>后端错误:</strong><br>${messageText.replace('[GEMINI_ERROR]:', '')}`, 'gemini', true);
+                        addMessageToChat(`<strong>後端錯誤:</strong><br>${messageText.replace('[GEMINI_ERROR]:', '')}`, 'gemini', true);
                         return;
                     }
                     if (currentGeminiBubble === null) currentGeminiBubble = addMessageToChat(messageText, 'gemini');
@@ -509,37 +509,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     if(geminiChatWindow) geminiChatWindow.scrollTop = geminiChatWindow.scrollHeight;
                 } else if (msg.type === 'status') {
                     if (msg.status === 'process_started') {
-                        addMessageToChat("✅ Gemini CLI 已成功启动，您可以开始对话了。", 'gemini');
+                        addMessageToChat("✅ Gemini CLI 已成功啟動，您可以開始對話了。", 'gemini');
                         if(geminiInput) {
                             geminiInput.disabled = false;
-                            geminiInput.placeholder = "请在这里输入讯息...";
+                            geminiInput.placeholder = "請在這裡輸入訊息...";
                         }
                         if(geminiSendBtn) geminiSendBtn.disabled = false;
                         if(geminiStartBtn) geminiStartBtn.disabled = false;
                     } else if (msg.status === 'error') {
-                        addMessageToChat(`❌ <strong>启动失败:</strong><br>${msg.data}`, 'gemini', true);
+                        addMessageToChat(`❌ <strong>啟動失敗:</strong><br>${msg.data}`, 'gemini', true);
                         if(geminiStartBtn) geminiStartBtn.disabled = false;
                     } else if (msg.status === 'connection_ready') {
                         if(geminiStartBtn) geminiStartBtn.disabled = false;
-                        console.log("后端已准备就绪，可以启动 Gemini。");
+                        console.log("後端已準備就緒，可以啟動 Gemini。");
                     }
                 }
             } catch (error) {
-                console.error("解析 Gemini WebSocket 讯息时出错:", error, "原始讯息:", event.data);
+                console.error("解析 Gemini WebSocket 訊息時出錯:", error, "原始訊息:", event.data);
                 if (currentGeminiBubble === null) currentGeminiBubble = addMessageToChat(event.data, 'gemini');
                 else currentGeminiBubble.innerText += event.data;
                 if(geminiChatWindow) geminiChatWindow.scrollTop = geminiChatWindow.scrollHeight;
             }
         };
         geminiWs.onclose = () => {
-            addMessageToChat("与伺服器的连线已中断。请重新整理页面。", 'gemini');
-            if(geminiInput) { geminiInput.disabled = true; geminiInput.placeholder = "已断线"; }
+            addMessageToChat("與伺服器的連線已中斷。請重新整理頁面。", 'gemini');
+            if(geminiInput) { geminiInput.disabled = true; geminiInput.placeholder = "已斷線"; }
             if(geminiSendBtn) geminiSendBtn.disabled = true;
             if(geminiStartBtn) geminiStartBtn.disabled = true;
         };
         geminiWs.onerror = (err) => {
-            console.error("Gemini WebSocket 错误:", err);
-            addMessageToChat("连线时发生错误，请检查后端伺服器日志。", 'gemini');
+            console.error("Gemini WebSocket 錯誤:", err);
+            addMessageToChat("連線時發生錯誤，請檢查後端伺服器日誌。", 'gemini');
             if(geminiInput) { geminiInput.disabled = true; }
             if(geminiSendBtn) geminiSendBtn.disabled = true;
             if(geminiStartBtn) geminiStartBtn.disabled = true;
@@ -596,14 +596,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(settings)
             });
         } catch (error) {
-            console.error('储存设定到后端时发生错误:', error);
+            console.error('儲存設定到後端時發生錯誤:', error);
         }
     }
 
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
-            if (!response.ok) throw new Error('无法从伺服器获取设定。');
+            if (!response.ok) throw new Error('無法從伺服器獲取設定。');
             const settings = await response.json();
             
             if (settings.model) {
@@ -687,7 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            console.error("载入设定失败，將使用预设值:", error.message);
+            console.error("載入設定失敗，將使用預設值:", error.message);
             if(comfyFormElements.seed_behavior) comfyFormElements.seed_behavior.value = 'random';
             if(comfyRandomSeedBtn) comfyRandomSeedBtn.click();
         }
@@ -696,22 +696,22 @@ document.addEventListener('DOMContentLoaded', () => {
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
         if (!loraSelectionGrid) return;
-        loraSelectionGrid.innerHTML = '<p class="text-muted">正在载入 LoRA 列表...</p>';
+        loraSelectionGrid.innerHTML = '<p class="text-muted">正在載入 LoRA 列表...</p>';
         try {
             const response = await fetchWithUserContext(`/api/comfyui/loras_by_model?model_name=${encodeURIComponent(modelName)}`);
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || `无法获取 LoRAs: ${response.statusText}`);
+                throw new Error(errorData.detail || `無法獲取 LoRAs: ${response.statusText}`);
             }
             const loras = await response.json();
             loraSelectionGrid.innerHTML = '';
             if (loras.length === 0) {
-                loraSelectionGrid.innerHTML = '<p class="text-muted">未找到与当前模型类型匹配的 LoRA。</p>';
+                loraSelectionGrid.innerHTML = '<p class="text-muted">未找到與當前模型類型匹配的 LoRA。</p>';
             } else {
                 loras.forEach(lora => loraSelectionGrid.appendChild(createModelCard(lora, 'lora')));
             }
         } catch (error) {
-            loraSelectionGrid.innerHTML = `<p class="text-danger">错误: ${error.message}</p>`;
+            loraSelectionGrid.innerHTML = `<p class="text-danger">錯誤: ${error.message}</p>`;
         }
     }
 
@@ -727,19 +727,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) {
                 const err = await response.json();
-                throw new Error(err.detail || `伺服器错误: ${response.statusText}`);
+                throw new Error(err.detail || `伺服器錯誤: ${response.statusText}`);
             }
             const data = await response.json();
             return data.name;
         } catch (error) {
-            alert(`图片上传失败: ${error.message}`);
+            alert(`圖片上傳失敗: ${error.message}`);
             return null;
         }
     }
 
     async function handleFileUpload(file, stateObject, previewElement, uploadArea, previewContainer, filenameElement, tabElement, stateKey) {
         if (!file) return;
-        uploadArea.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在上传...</p>';
+        uploadArea.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在上傳...</p>';
         
         const filename = await uploadImageToServer(file);
         if (filename) {
@@ -784,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
-            if (!checkpointsResponse.ok) throw new Error(`无法获取 Checkpoints: ${checkpointsResponse.statusText}`);
+            if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
             const checkpoints = await checkpointsResponse.json();
             
             if (modelSelectionGrid) {
@@ -798,14 +798,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await updateLoraListForModel(comfyFormElements.model);
         } catch (error) {
-            if(comfyStatusText) { comfyStatusText.textContent = `错误: ${error.message}。`; comfyStatusText.classList.add('text-danger'); }
+            if(comfyStatusText) { comfyStatusText.textContent = `錯誤: ${error.message}。`; comfyStatusText.classList.add('text-danger'); }
         }
     }
 
     async function fetchAndPopulateVideoModels() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/video_models');
-            if (!response.ok) throw new Error('无法获取影片模型');
+            if (!response.ok) throw new Error('無法獲取影片模型');
             const models = await response.json();
             if (videoModelSelect) {
                 videoModelSelect.innerHTML = '';
@@ -821,9 +821,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } catch (error) {
-            console.error('填充影片模型时出错:', error);
+            console.error('填充影片模型時出錯:', error);
             if (videoModelSelect) {
-                videoModelSelect.innerHTML = `<option value="">错误: ${error.message}</option>`;
+                videoModelSelect.innerHTML = `<option value="">錯誤: ${error.message}</option>`;
             }
         }
     }
@@ -831,7 +831,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndPopulateControlNetResources() {
         try {
             const modelsResponse = await fetchWithUserContext('/api/comfyui/controlnet_models');
-            if (!modelsResponse.ok) throw new Error('无法获取 ControlNet 模型');
+            if (!modelsResponse.ok) throw new Error('無法獲取 ControlNet 模型');
             const models = await modelsResponse.json();
             if (controlnetModelSelect) {
                 controlnetModelSelect.innerHTML = '';
@@ -844,7 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const preprocessorsResponse = await fetchWithUserContext('/api/comfyui/controlnet_preprocessors');
-            if (!preprocessorsResponse.ok) throw new Error('无法获取 ControlNet 预处理器');
+            if (!preprocessorsResponse.ok) throw new Error('無法獲取 ControlNet 預處理器');
             const preprocessors = await preprocessorsResponse.json();
             if (controlnetPreprocessorSelect) {
                 controlnetPreprocessorSelect.innerHTML = '';
@@ -856,9 +856,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         } catch (error) {
-            console.error('填充 ControlNet 资源时出错:', error);
+            console.error('填充 ControlNet 資源時出錯:', error);
             if (controlnetOptionsContainer) {
-                controlnetOptionsContainer.innerHTML = `<p class="text-danger">错误: ${error.message}</p>`;
+                controlnetOptionsContainer.innerHTML = `<p class="text-danger">錯誤: ${error.message}</p>`;
             }
         }
     }
@@ -876,7 +876,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ]);
     
             if (!samplersRes.ok || !schedulersRes.ok) {
-                throw new Error('无法从后端获取採样器或排程器列表。');
+                throw new Error('無法從後端獲取採樣器或排程器列表。');
             }
     
             const samplers = await samplersRes.json();
@@ -900,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
             populateSelect(schedulerSelect, schedulers);
     
         } catch (error) {
-            console.error("填充採样器/排程器时出错:", error);
+            console.error("填充採樣器/排程器時出錯:", error);
         }
     }
 
@@ -964,7 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selectedLoraListContainer) return;
         selectedLoraListContainer.innerHTML = '';
         if (comfyFormElements.loras.length === 0) {
-            selectedLoraListContainer.innerHTML = '<p class="text-muted small">未选择任何 LoRA。</p>';
+            selectedLoraListContainer.innerHTML = '<p class="text-muted small">未選擇任何 LoRA。</p>';
             return;
         }
         
@@ -1024,7 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 applyHighlightByIds(JSON.parse(idsJson));
                 localStorage.removeItem('last_batch_ids');
             } catch (e) {
-                console.error("解析高亮 ID 时出错:", e);
+                console.error("解析高亮 ID 時出錯:", e);
                 localStorage.removeItem('last_batch_ids');
             }
         }
@@ -1079,10 +1079,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.innerHTML = '<i class="bi bi-trash-fill"></i>';
-        deleteBtn.title = `删除`;
+        deleteBtn.title = `刪除`;
         deleteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            if (confirm(`确定要删除这个项目吗？`)) await deleteHistoryItem(item.id, historyItemDiv);
+            if (confirm(`確定要刪除這個項目嗎？`)) await deleteHistoryItem(item.id, historyItemDiv);
         });
 
         historyItemDiv.prepend(mediaElement);
@@ -1119,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isLoadingHistory = true;
         
         if (mode !== 'newer' && historyLoadingIndicator) {
-            historyLoadingIndicator.textContent = '正在载入...';
+            historyLoadingIndicator.textContent = '正在載入...';
             historyLoadingIndicator.style.display = 'block';
             if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
         }
@@ -1133,13 +1133,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const response = await fetchWithUserContext(url);
-            if (!response.ok) throw new Error(`无法获取历史纪录: ${response.statusText}`);
+            if (!response.ok) throw new Error(`無法獲取歷史紀錄: ${response.statusText}`);
             const items = await response.json();
             renderHistory(items, mode);
             if (mode === 'older' || mode === 'initial') {
                 hasMoreHistory = items.length >= 30;
                 if (!hasMoreHistory && historyLoadingIndicator) {
-                    historyLoadingIndicator.textContent = '没有更多纪录了';
+                    historyLoadingIndicator.textContent = '沒有更多紀錄了';
                     if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
                 } else if (historyLoadingIndicator) {
                     historyLoadingIndicator.style.display = 'none';
@@ -1147,8 +1147,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return items;
         } catch (error) {
-            console.error("获取历史纪录失败:", error);
-            if (historyLoadingIndicator && mode !== 'newer') historyLoadingIndicator.textContent = `错误: ${error.message}`;
+            console.error("獲取歷史紀錄失敗:", error);
+            if (historyLoadingIndicator && mode !== 'newer') historyLoadingIndicator.textContent = `錯誤: ${error.message}`;
             return [];
         } finally {
             if (mode !== 'newer') isLoadingHistory = false;
@@ -1187,7 +1187,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (currentHistoryList.length === 0) {
-            comfyHistoryGrid.innerHTML = '<p class="text-muted">没有历史纪录。</p>';
+            comfyHistoryGrid.innerHTML = '<p class="text-muted">沒有歷史紀錄。</p>';
             hasMoreHistory = false;
         }
     }
@@ -1223,10 +1223,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentHistoryList = currentHistoryList.filter(item => item.id !== id);
                 if (currentHistoryList.length === 0) renderHistory([], 'initial'); 
             } else { 
-                throw new Error(result.detail || '删除失败'); 
+                throw new Error(result.detail || '刪除失敗'); 
             }
         } catch (error) { 
-            alert(`删除失败: ${error.message}`); 
+            alert(`刪除失敗: ${error.message}`); 
         }
     }
     
@@ -1246,10 +1246,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const applicationServerKey = urlBase64ToUint8Array(data.public_key);
             const subscription = await serviceWorkerRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
             await fetchWithUserContext('/api/comfyui/save_subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription) });
-            console.log('已成功订阅 Web Push 通知。');
+            console.log('已成功訂閱 Web Push 通知。');
             await updateNotificationUI();
         } catch (error) {
-            console.error('订阅 Web Push 通知失败:', error);
+            console.error('訂閱 Web Push 通知失敗:', error);
             await updateNotificationUI();
         }
     }
@@ -1260,24 +1260,24 @@ document.addEventListener('DOMContentLoaded', () => {
             notificationStatusBadge.textContent = '不支援';
             notificationStatusBadge.className = 'badge bg-dark notification-status-badge';
             enableNotificationsBtn.disabled = true;
-            enableNotificationsBtn.textContent = '浏览器不支援';
+            enableNotificationsBtn.textContent = '瀏覽器不支援';
             return;
         }
         const permission = await navigator.permissions.query({ name: 'push', userVisibleOnly: true });
         switch (permission.state) {
             case 'granted':
-                notificationStatusBadge.textContent = '已启用';
+                notificationStatusBadge.textContent = '已啟用';
                 notificationStatusBadge.className = 'badge bg-success notification-status-badge';
                 enableNotificationsBtn.style.display = 'none';
                 break;
             case 'denied':
-                notificationStatusBadge.textContent = '已封锁';
+                notificationStatusBadge.textContent = '已封鎖';
                 notificationStatusBadge.className = 'badge bg-danger notification-status-badge';
                 enableNotificationsBtn.disabled = true;
-                enableNotificationsBtn.textContent = '已被封锁';
+                enableNotificationsBtn.textContent = '已被封鎖';
                 break;
             default:
-                notificationStatusBadge.textContent = '点击启用';
+                notificationStatusBadge.textContent = '點擊啟用';
                 notificationStatusBadge.className = 'badge bg-warning text-dark notification-status-badge';
                 enableNotificationsBtn.disabled = false;
                 enableNotificationsBtn.style.display = 'block';
@@ -1291,7 +1291,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(comfyProgressContainer) comfyProgressContainer.style.display = 'none';
         if(comfyStatusText) {
             if (!comfyStatusText.classList.contains('text-danger')) {
-                 comfyStatusText.textContent = '请在左侧设定参数并点击生成。';
+                 comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
             }
             comfyStatusText.classList.remove('text-success');
             comfyStatusText.style.display = 'block';
@@ -1305,7 +1305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (comfyGenerateBtn) comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
-            comfyStatusText.textContent = '任务执行中，正在连接进度...';
+            comfyStatusText.textContent = '任務執行中，正在連接進度...';
             comfyStatusText.style.display = 'block';
             comfyStatusText.classList.remove('text-danger', 'text-success');
         }
@@ -1321,18 +1321,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const isVideoMode = activeTabPane && activeTabPane.id === 'tab-pane-video';
     
         if (!isVideoMode && !comfyFormElements.model) {
-            alert('请先选择一个 Checkpoint 模型！');
+            alert('請先選擇一個 Checkpoint 模型！');
             return;
         }
         if (isVideoMode && (!videoModelSelect || !videoModelSelect.value)) {
-            alert('请先选择一个影片模型！');
+            alert('請先選擇一個影片模型！');
             return;
         }
     
         comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
-            comfyStatusText.textContent = '正在提交任务...';
+            comfyStatusText.textContent = '正在提交任務...';
             comfyStatusText.style.display = 'block';
             comfyStatusText.classList.remove('text-danger', 'text-success');
         }
@@ -1402,10 +1402,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     
             if (!response.ok) {
-                let errorMsg = `提交任务失败，状态码: ${response.status}`;
+                let errorMsg = `提交任務失敗，狀態碼: ${response.status}`;
                 try {
                     const errorData = await response.json();
-                    errorMsg = errorData.detail || `提交任务失败: ${response.statusText}`;
+                    errorMsg = errorData.detail || `提交任務失敗: ${response.statusText}`;
                 } catch (e) { /* Do nothing */ }
                 throw new Error(errorMsg);
             }
@@ -1414,13 +1414,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data && data.prompt_id) {
                 setGeneratingState(data.prompt_id);
             } else {
-                throw new Error('后端成功响应，但未返回有效的 prompt_id。');
+                throw new Error('後端成功響應，但未返回有效的 prompt_id。');
             }
     
         } catch (error) {
-            console.error('生成流程出错:', error);
+            console.error('生成流程出錯:', error);
             if (comfyStatusText) {
-                comfyStatusText.textContent = `错误:\n${error.message}`;
+                comfyStatusText.textContent = `錯誤:\n${error.message}`;
                 comfyStatusText.classList.add('text-danger');
             }
             resetUI();
@@ -1437,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', () => {
         comfyStatusWs = new WebSocket(wsUrl);
         let isFirstItem = true;
 
-        comfyStatusWs.onopen = () => console.log(`已连接到状态 WebSocket，监听 Prompt ID: ${prompt_id}`);
+        comfyStatusWs.onopen = () => console.log(`已連接到狀態 WebSocket，監聽 Prompt ID: ${prompt_id}`);
         comfyStatusWs.onmessage = (event) => {
             const message = JSON.parse(event.data);
             if (trackedPromptId !== prompt_id) return;
@@ -1452,7 +1452,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         comfyProgressBar.style.width = `${percent}%`;
                         comfyProgressBar.setAttribute('aria-valuenow', percent);
                     }
-                    if(comfyProgressText) comfyProgressText.textContent = `进度: ${data.current_step} / ${data.total_steps}`;
+                    if(comfyProgressText) comfyProgressText.textContent = `進度: ${data.current_step} / ${data.total_steps}`;
                     break;
                 case 'item_generated':
                     const itemData = message.data;
@@ -1460,12 +1460,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (promptText.includes("LOCAL_FALLBACK_USED:")) {
                         if (positivePromptWarning) {
-                            positivePromptWarning.textContent = '警告：LLM 安全过滤已触发，已使用本地翻译作为后备。';
+                            positivePromptWarning.textContent = '警告：LLM 安全過濾已觸發，已使用本地翻譯作為後備。';
                             positivePromptWarning.style.display = 'block';
                         }
                     } else if (promptText.includes("TRANSLATION_FAILED:")) {
                          if (positivePromptWarning) {
-                            positivePromptWarning.textContent = '错误：提示词翻译失败，请检查后端日志。';
+                            positivePromptWarning.textContent = '錯誤：提示詞翻譯失敗，請檢查後端日誌。';
                             positivePromptWarning.style.display = 'block';
                         }
                     }
@@ -1493,18 +1493,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 case 'error':
                     if(comfyStatusText) {
-                        comfyStatusText.textContent = `错误: ${message.data.message}`;
+                        comfyStatusText.textContent = `錯誤: ${message.data.message}`;
                         comfyStatusText.classList.add('text-danger');
                     }
                     comfyStatusWs.close();
                     break;
             }
         };
-        comfyStatusWs.onclose = (event) => console.log(`状态 WebSocket (Prompt ID: ${prompt_id}) 已关闭。 Code: ${event.code}`);
+        comfyStatusWs.onclose = (event) => console.log(`狀態 WebSocket (Prompt ID: ${prompt_id}) 已關閉。 Code: ${event.code}`);
         comfyStatusWs.onerror = (error) => {
-            console.error(`状态 WebSocket (Prompt ID: ${prompt_id}) 发生错误:`, error);
+            console.error(`狀態 WebSocket (Prompt ID: ${prompt_id}) 發生錯誤:`, error);
             if(comfyStatusText) {
-                comfyStatusText.textContent = '进度监听连线错误。';
+                comfyStatusText.textContent = '進度監聽連線錯誤。';
                 comfyStatusText.classList.add('text-danger');
             }
         };
@@ -1535,7 +1535,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 wasPreviouslyRunning = false;
             }
         } catch (error) {
-            console.error("轮询伫列状态时发生错误:", error);
+            console.error("輪詢佇列狀態時發生錯誤:", error);
             if(wasPreviouslyRunning) resetUI();
             wasPreviouslyRunning = false;
         }
@@ -1547,7 +1547,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const item = currentHistoryList[index];
         
         if (!item) {
-            console.error("尝试在灯箱中显示一个无效的历史纪录项目。");
+            console.error("嘗試在燈箱中顯示一個無效的歷史紀錄項目。");
             return;
         }
 
@@ -1593,7 +1593,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             modalParams.lora_list.appendChild(ul);
         } else {
-            modalParams.lora_list.innerHTML = '<p class="param-value">无</p>';
+            modalParams.lora_list.innerHTML = '<p class="param-value">無</p>';
         }
 
         if (params.source_image && typeof params.denoise === 'number' && !item.is_video) {
@@ -1619,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
             modalParams.video_info.style.display = 'block';
         }
 
-        modalParams.optimization_mode.textContent = params.optimization_mode || '无';
+        modalParams.optimization_mode.textContent = params.optimization_mode || '無';
         
         const inputPrompt = item.is_video ? params.video_main_prompt : params.main_prompt;
         if (inputPrompt) {
@@ -1967,95 +1967,96 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     initialize();
-});
 
-async function handleDownloadSubmit(e) {
-    e.preventDefault();
-    const form = e.target;
-    const submitBtn = form.querySelector('#download-model-submit-btn');
-    const spinner = form.querySelector('#download-model-spinner');
-    const statusDiv = form.querySelector('#download-status');
+    // [v16.2 修正] 將這兩個函式移回到 DOMContentLoaded 內部
+    async function handleDownloadSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const submitBtn = form.querySelector('#download-model-submit-btn');
+        const spinner = form.querySelector('#download-model-spinner');
+        const statusDiv = form.querySelector('#download-status');
 
-    if (!submitBtn || !spinner || !statusDiv) return;
+        if (!submitBtn || !spinner || !statusDiv) return;
 
-    submitBtn.disabled = true;
-    spinner.style.display = 'inline-block';
-    statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載任務...</div>';
+        submitBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+        statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載任務...</div>';
 
-    const modelType = form.querySelector('#download-model-type').value;
-    const modelUrl = form.querySelector('#download-model-url').value;
-    const modelName = form.querySelector('#download-model-name').value;
-    const previewFile = form.querySelector('#download-model-preview').files[0];
+        const modelType = form.querySelector('#download-model-type').value;
+        const modelUrl = form.querySelector('#download-model-url').value;
+        const modelName = form.querySelector('#download-model-name').value;
+        const previewFile = form.querySelector('#download-model-preview').files[0];
 
-    let previewImageBase64 = null;
+        let previewImageBase64 = null;
 
-    if (previewFile) {
+        if (previewFile) {
+            try {
+                previewImageBase64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = (error) => reject(error);
+                    reader.readAsDataURL(previewFile);
+                });
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">讀取預覽圖失敗: ${error.message}</div>`;
+                submitBtn.disabled = false;
+                spinner.style.display = 'none';
+                return;
+            }
+        }
+
+        const payload = {
+            model_type: modelType,
+            model_url: modelUrl,
+            model_name: modelName,
+            preview_image_base64: previewImageBase64
+        };
+
         try {
-            previewImageBase64 = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = (error) => reject(error);
-                reader.readAsDataURL(previewFile);
+            const response = await fetchWithUserContext('/api/comfyui/download_model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                form.reset();
+            } else {
+                throw new Error(result.detail || '提交失敗');
+            }
         } catch (error) {
-            statusDiv.innerHTML = `<div class="alert alert-danger">讀取預覽圖失敗: ${error.message}</div>`;
+            statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
+        } finally {
             submitBtn.disabled = false;
             spinner.style.display = 'none';
-            return;
         }
     }
 
-    const payload = {
-        model_type: modelType,
-        model_url: modelUrl,
-        model_name: modelName,
-        preview_image_base64: previewImageBase64
-    };
+    function filterModels() {
+        const modelSelectionGrid = document.getElementById('model-selection-grid');
+        if (!modelSelectionGrid) return;
 
-    try {
-        const response = await fetchWithUserContext('/api/comfyui/download_model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+        const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
+        const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
+
+        modelCards.forEach(card => {
+            const modelName = card.dataset.itemName.toLowerCase();
+            let show = false;
+            if (selectedFilters.length === 0) {
+                show = true;
+            } else {
+                show = selectedFilters.some(filter => {
+                    if (filter === 'sdxl' && modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                    if (filter === 'sd3' && modelName.includes('sd3')) return true;
+                    if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                    if (filter === 'flux' && modelName.includes('flux')) return true;
+                    return false;
+                });
+            }
+            card.style.display = show ? 'block' : 'none';
         });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-            form.reset();
-        } else {
-            throw new Error(result.detail || '提交失敗');
-        }
-    } catch (error) {
-        statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
-    } finally {
-        submitBtn.disabled = false;
-        spinner.style.display = 'none';
     }
-}
-
-function filterModels() {
-    const modelSelectionGrid = document.getElementById('model-selection-grid');
-    if (!modelSelectionGrid) return;
-
-    const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
-    const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
-
-    modelCards.forEach(card => {
-        const modelName = card.dataset.itemName.toLowerCase();
-        let show = false;
-        if (selectedFilters.length === 0) {
-            show = true;
-        } else {
-            show = selectedFilters.some(filter => {
-                if (filter === 'sdxl' && modelName.includes('xl') && !modelName.includes('sd3')) return true;
-                if (filter === 'sd3' && modelName.includes('sd3')) return true;
-                if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
-                if (filter === 'flux' && modelName.includes('flux')) return true;
-                return false;
-            });
-        }
-        card.style.display = show ? 'block' : 'none';
-    });
-}
+});
