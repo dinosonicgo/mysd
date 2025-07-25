@@ -2,23 +2,59 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>個人助理 - 裝置選擇</title>
+    <title>正在重新導向...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 這些 Meta 標籤會強烈建議瀏覽器不要快取此頁面 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { text-align: center; background-color: #1e1e1e; padding: 40px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
-        h1 { color: #ffffff; margin-bottom: 30px; }
-        .device-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
-        .device-link { display: block; padding: 20px; background-color: #333; color: #00aaff; text-decoration: none; border-radius: 8px; font-size: 1.2em; font-weight: bold; transition: background-color 0.3s, transform 0.2s; }
-        .device-link:hover { background-color: #00aaff; color: #ffffff; transform: translateY(-5px); }
+        .container { text-align: center; }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #00aaff; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #status { font-size: 1.2em; }
+        #error-details { margin-top: 20px; padding: 15px; background-color: #2a2a2a; border-radius: 8px; max-width: 600px; text-align: left; font-family: monospace, sans-serif; display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>選擇要連線的裝置</h1>
-        <div class="device-grid">
-            <a href="./RTX2060.html?v=1753401271" class="device-link">RTX2060</a><a href="./RTX3050.html?v=1753401271" class="device-link">RTX3050</a>
-        </div>
+        <div class="spinner"></div>
+        <p id="status">正在獲取最新的服務網址，請稍候...</p>
+        <div id="error-details"></div>
     </div>
+
+    <script>
+        (function() {
+            const statusEl = document.getElementById('status');
+            const errorEl = document.getElementById('error-details');
+
+            // 使用時間戳作為查詢參數，強制瀏覽器和 CDN 每次都下載最新的 config.json
+            const configUrl = './config.json?cache_bust=' + new Date().getTime();
+
+            fetch(configUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`伺服器回應錯誤 (HTTP ${response.status})，請確認 GitHub Pages 是否已成功部署。`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data && data.url) {
+                        statusEl.textContent = '獲取成功！正在跳轉...';
+                        window.location.href = data.url;
+                    } else {
+                        throw new Error('設定檔 (config.json) 格式不正確或缺少 URL。');
+                    }
+                })
+                .catch(error => {
+                    console.error('重新導向時發生錯誤:', error);
+                    statusEl.textContent = '自動重新導向失敗！';
+                    errorEl.innerHTML = '<strong>錯誤詳情:</strong><br>' + error.message + '<br><br>請檢查 start_all_services.py 腳本是否正在運行，並已成功推送到 GitHub。';
+                    errorEl.style.display = 'block';
+                });
+        })();
+    </script>
 </body>
 </html>
+
