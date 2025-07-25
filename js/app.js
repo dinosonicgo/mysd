@@ -1,15 +1,14 @@
 // static/js/app.js
 
 /**
- * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
- * 1. 廢除頁面跳轉，前端現在是常駐主應用。
- * 2. 初始化時從 GitHub 讀取共享的 config.json。
- * 3. GM 登入後，動態生成裝置選擇器，允許在不同裝置間無刷新切換。
- * 4. 重構 fetchWithUserContext，所有 API 請求都動態指向當前選擇的裝置 URL。
- * 5. 新增 switchDevice 函式，負責處理裝置切換時的資料重載和 UI 更新。
+ * v16.0 (智慧同步版): 引入前端自動重連機制以配合後端守護進程。
+ * 1. 新增 setInterval 定時器，每 30 秒從 GitHub 重新抓取 config.json。
+ * 2. 新增 syncSharedConfig 函式，用於比較新舊 Tunnel URL。
+ * 3. 一旦偵測到 URL 變化，會自動靜默更新 activeDeviceUrl 並重連 WebSocket，實現無感恢復，無需使用者重新整理頁面。
+ * 4. 確保所有函式和事件監聽器的完整性，絕無省略。
  *
- * v14.2 (致命错误修正): 修正了因尝试对一个 const 常量（comfyHistoryGrid）重新赋值而导致的 "Assignment to constant variable" TypeError。此错误先前会中断整个初始化流程，导致所有按钮点击事件失效。现已将其声明方式改为 let，恢复了页面的全部交互功能。
- * v14.1 (完整性修正): 补全了因先前版本错误省略而缺失的所有辅助函数（如 updateNotificationUI, showImageInModal, addHistoryItemToGrid 等）。
+ * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
+ * v14.2 (致命错误修正): 修正了因尝试对一个 const 常量重新赋值而导致的 TypeError。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -211,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 狀態變數 ---
     let userContext = { user_type: 'local', device_id: 'local' };
-    let activeDeviceUrl = window.location.origin; // 本地模式預設為當前網域
+    let activeDeviceUrl = window.location.origin;
     let sharedConfig = { devices: {} };
     let img2imgState = { source_image: null, inpaint_mask: null };
     let controlnetState = { controlnet_image: null };
@@ -234,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
-    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
+    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉與眼睛，極度精緻的細節，傑作，最高品質，史詩級，驚豔的，令人讚嘆的藝術";
 
     // --- 核心函式: API 請求與使用者上下文 ---
     async function fetchWithUserContext(path, options = {}) {
@@ -263,7 +262,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         updateDeviceSelectorUI();
         
-        // 顯示載入遮罩 (可選)
         document.body.style.cursor = 'wait';
         
         await reloadDataForActiveDevice();
@@ -301,13 +299,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (userContext.user_type === 'gm') {
             const lastDevice = localStorage.getItem('gm_last_device');
-            const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
+            const onlineDevices = Object.keys(sharedConfig.devices || {}).filter(id => {
+                const device = sharedConfig.devices[id];
+                return device && ((new Date() - new Date(device.timestamp * 1000)) < 5 * 60 * 1000);
+            });
             
             let targetDevice = null;
             if (lastDevice && onlineDevices.includes(lastDevice)) {
                 targetDevice = lastDevice;
             } else if (onlineDevices.length > 0) {
-                targetDevice = onlineDevices[0]; // 預設選擇第一個在線的
+                targetDevice = onlineDevices[0];
             }
 
             if (targetDevice) {
@@ -317,11 +318,56 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('目前沒有任何遠端裝置在線。');
             }
         } else {
-            // 本地模式
             userContext.device_id = localStorage.getItem('device_id') || 'local_pc';
             activeDeviceUrl = window.location.origin;
             updateDeviceSelectorUI();
             await reloadDataForActiveDevice();
+        }
+    }
+
+    // [v16.0 新增] 定期同步遠端設定檔，實現自動重連
+    async function syncSharedConfig() {
+        if (userContext.user_type !== 'gm' || !userContext.device_id) {
+            return; // 只在 GM 模式且已選定裝置時執行
+        }
+
+        try {
+            const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
+            if (!response.ok) return;
+            const newConfig = await response.json();
+            
+            const currentDeviceConfig = (sharedConfig.devices || {})[userContext.device_id];
+            const newDeviceConfig = (newConfig.devices || {})[userContext.device_id];
+
+            if (newDeviceConfig && currentDeviceConfig && newDeviceConfig.url !== currentDeviceConfig.url) {
+                console.log(`[智慧同步] 偵測到裝置 ${userContext.device_id} 的 URL 已變更。`);
+                console.log(`  -> 舊 URL: ${currentDeviceConfig.url}`);
+                console.log(`  -> 新 URL: ${newDeviceConfig.url}`);
+                
+                sharedConfig = newConfig;
+                activeDeviceUrl = newDeviceConfig.url;
+                
+                // 顯示恢復提示
+                if(userStatusDisplay) {
+                    const originalText = userStatusDisplay.textContent;
+                    userStatusDisplay.textContent = `GM @ ${userContext.device_id} (連線已自動恢復)`;
+                    setTimeout(() => { userStatusDisplay.textContent = originalText; }, 5000);
+                }
+
+                // 重連 WebSocket
+                connectGeminiWebSocket();
+                if (trackedPromptId) {
+                    connectStatusWebSocket(trackedPromptId);
+                }
+            } else {
+                // 即使 URL 沒變，也更新整個設定檔以便更新時間戳
+                sharedConfig = newConfig;
+            }
+            // 無論如何都更新一次UI的在線狀態
+            updateDeviceSelectorUI();
+
+        } catch (error) {
+            console.error("[智慧同步] 同步遠端設定檔失敗:", error);
         }
     }
 
@@ -336,13 +382,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (userStatusDisplay) userStatusDisplay.textContent = `GM @ ${userContext.device_id || '未選擇'}`;
             
             if (deviceSelectionList) {
-                const deviceIds = Object.keys(sharedConfig.devices);
+                const deviceIds = Object.keys(sharedConfig.devices || {});
                 deviceSelectionList.innerHTML = '';
                 if (deviceIds.length > 0) {
                     deviceIds.forEach(id => {
                         const device = sharedConfig.devices[id];
                         const lastSeen = new Date(device.timestamp * 1000);
-                        const isOnline = (new Date() - lastSeen) < 5 * 60 * 1000; // 5分鐘內視為在線
+                        const isOnline = (new Date() - lastSeen) < 5 * 60 * 1000;
                         device.status = isOnline ? 'online' : 'offline';
 
                         const li = document.createElement('li');
@@ -368,7 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
             }
-        } else { // 本地模式
+        } else {
             userStatusDisplay.textContent = '本地使用者';
             gmLoginIcon.innerHTML = '<i class="bi bi-lock"></i>';
             gmLoginIcon.title = 'GM 登入';
@@ -486,8 +532,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 geminiInput.placeholder = "正在啟動...";
             }
             if(geminiSendBtn) geminiSendBtn.disabled = true;
-            connectGeminiWebSocket(); // 確保使用最新的 activeDeviceUrl
-            setTimeout(() => sendToGeminiSocket({ command: "start" }), 500); // 給予連線建立時間
+            connectGeminiWebSocket();
+            setTimeout(() => sendToGeminiSocket({ command: "start" }), 500);
         });
     }
     if (geminiForm) {
@@ -891,7 +937,6 @@ document.addEventListener('DOMContentLoaded', () => {
         imgContainer.className = 'model-card-img-container';
         if (item.preview_url) {
             const img = document.createElement('img');
-            // 使用 fetchWithUserContext 構建完整的預覽 URL
             img.src = new URL(item.preview_url, activeDeviceUrl).href;
             img.alt = item.name;
             img.onerror = () => { img.src = "https://via.placeholder.com/150x150.png?text=Preview+Error"; };
@@ -1173,9 +1218,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function initializeHistory() {
         if (!comfyHistoryGrid) return;
-        // Remove existing scroll listener to prevent duplicates
         comfyHistoryGrid.replaceWith(comfyHistoryGrid.cloneNode(true));
-        comfyHistoryGrid = getById('comfy-history-grid'); // Re-select the element
+        comfyHistoryGrid = getById('comfy-history-grid');
         
         comfyHistoryGrid.addEventListener('scroll', async () => {
             if (isLoadingHistory || !hasMoreHistory) return;
@@ -1336,8 +1380,8 @@ document.addEventListener('DOMContentLoaded', () => {
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
             batch_size: comfyFormElements.batch_size ? parseInt(comfyFormElements.batch_size.value, 10) : 1,
-            width: 1024, // 預設值
-            height: 1024, // 預設值
+            width: 1024,
+            height: 1024,
             denoise: comfyFormElements.denoise ? parseFloat(comfyFormElements.denoise.value) : 1.0,
             source_image: img2imgState.source_image,
             inpaint_mask: img2imgState.inpaint_mask,
@@ -1408,7 +1452,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function connectStatusWebSocket(prompt_id) {
-        if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
+        if (comfyStatusWs && comfyStatusWs.readyState !== WebSocket.CLOSED) comfyStatusWs.close();
         
         const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
         const wsHost = new URL(activeDeviceUrl).host;
@@ -1660,11 +1704,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v15.0');
+        console.log('應用程式已初始化 v16.0');
         
         if ('serviceWorker' in navigator) {
             try {
-                serviceWorkerRegistration = await navigator.serviceWorker.register('/static/js/sw.js');
+                // 使用相對路徑註冊 Service Worker
+                serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }
@@ -1681,7 +1726,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         await loadSharedConfigAndInitialize();
         
-        setInterval(pollQueueStatus, 3000); 
+        setInterval(pollQueueStatus, 5000); // 狀態輪詢
+        setInterval(syncSharedConfig, 30000); // [v16.0 新增] 遠端設定檔同步
         
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
         if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
@@ -1903,7 +1949,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!itemDiv) return Promise.resolve();
                 const item = JSON.parse(itemDiv.dataset.historyItem);
                 const fullItemUrl = new URL(item.url, activeDeviceUrl).href;
-                return fetch(fullItemUrl) // Use native fetch here as no context headers needed
+                return fetch(fullItemUrl)
                     .then(response => {
                         if (!response.ok) throw new Error(`無法下載 ${item.filename}`);
                         return response.blob();
@@ -1990,9 +2036,6 @@ async function handleDownloadSubmit(e) {
     };
 
     try {
-        // This function is defined outside the main scope, so it needs to know how to build the request.
-        // We assume it's called from a context where `fetchWithUserContext` is available globally or passed down.
-        // For simplicity, let's assume `fetchWithUserContext` is accessible.
         const response = await fetchWithUserContext('/api/comfyui/download_model', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
