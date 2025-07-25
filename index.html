@@ -1,25 +1,931 @@
+<!-- static/index.html -->
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>正在初始化服務...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
+    <title>個人助理控制面板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { text-align: center; }
-        .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #00aaff; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #status { font-size: 1.2em; }
+        /* v15.0 (多裝置架構): 這是主應用程式的入口，不再是跳轉頁 */
+        body { background-color: #f8f9fa; }
+        #gemini-chat-window { height: 65vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; padding: 1rem; background-color: #ffffff; }
+        .chat-message { margin-bottom: 1rem; }
+        .chat-message .message-bubble { padding: 0.5rem 1rem; border-radius: 1rem; max-width: 80%; word-wrap: break-word; }
+        .user-message .message-bubble { background-color: #0d6efd; color: white; margin-left: auto; }
+        .gemini-message .message-bubble { background-color: #e9ecef; color: #212529; margin-right: auto; }
+        #comfy-result-container img, #comfy-result-container video { max-width: 100%; height: auto; border-radius: 0.375rem; }
+        .page-content { display: none; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* --- 歷史紀錄樣式 --- */
+        #comfy-history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; max-height: 80vh; overflow-y: auto; padding: 0.5rem; }
+        .history-item { position: relative; cursor: pointer; }
+        .history-item img, .history-item video {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            border-radius: 0.375rem;
+            border: 3px solid transparent;
+            transition: border-color 0.3s, transform 0.2s, box-shadow 0.3s;
+        }
+        .history-item .video-play-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 3rem; color: rgba(255, 255, 255, 0.8); text-shadow: 0 0 10px black; pointer-events: none; z-index: 5; }
+        .history-item:hover img, .history-item:hover video {
+            border-color: #85b7ff;
+        }
+        .history-item.newly-generated img, .history-item.newly-generated video {
+            border-color: #0d6efd;
+            box-shadow: 0 0 12px rgba(13, 110, 253, 0.7);
+        }
+        .history-item .delete-btn { position: absolute; top: 5px; right: 5px; background-color: rgba(220, 53, 69, 0.8); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 14px; opacity: 0; transition: opacity 0.2s; z-index: 10; }
+        .history-item:hover .delete-btn { opacity: 1; }
+        .history-date-header { grid-column: 1 / -1; font-size: 1.25rem; font-weight: 500; color: #495057; padding: 1rem 0 0.5rem; border-bottom: 1px solid #dee2e6; margin-bottom: 0.5rem; }
+        .selection-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.3); display: none; align-items: center; justify-content: center; border-radius: 0.375rem; }
+        .selection-icon { font-size: 3rem; color: white; text-shadow: 0 0 5px black; }
+        .history-item.is-selected img, .history-item.is-selected video { transform: scale(0.9); border-color: #0d6efd; }
+        .history-item.is-selected .selection-overlay { display: flex; background-color: rgba(13, 110, 253, 0.4); }
+        .selection-mode .history-item .selection-overlay { display: flex; }
+
+        /* --- 圖片/影片 Modal (燈箱) 樣式 --- */
+        .image-modal { display: none; position: fixed; z-index: 1050; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; background-color: rgba(0, 0, 0, 0.85); animation: fadeIn 0.3s; }
+        .image-modal-dialog { display: flex; align-items: center; justify-content: center; height: 100%; padding: .5rem; }
+        .image-modal-content-wrapper { display: flex; flex-direction: row; max-width: 95vw; max-height: 95vh; background-color: #fff; border-radius: .5rem; overflow: hidden; position: relative; }
+        .image-modal-media-container { flex-shrink: 0; display: flex; align-items: center; justify-content: center; background-color: #000; position: relative; }
+        .image-modal-image, .image-modal-video { max-width: 100%; max-height: 95vh; object-fit: contain; }
+        .image-modal-video { display: none; }
+        .image-modal-details { flex-grow: 1; padding: 1.5rem; overflow-y: auto; min-width: 350px; }
+        .image-modal-details h4 { margin-bottom: 1rem; }
+        .image-modal-details .param-group { margin-bottom: 1rem; }
+        .image-modal-details .param-label { font-weight: bold; color: #6c757d; }
+        .image-modal-details .param-value { word-wrap: break-word; font-size: 0.9rem; }
+        .image-modal-details .prompt-box { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: .25rem; padding: .5rem; max-height: 120px; overflow-y: auto; position: relative; }
+        .copy-btn { position: absolute; top: 5px; right: 5px; cursor: pointer; color: #6c757d; }
+        .copy-btn:hover { color: #0d6efd; }
+        .image-modal-close { position: absolute; top: 15px; right: 25px; color: #fff; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.6); z-index: 1060; }
+        .image-modal-close:hover, .image-modal-close:focus { color: #bbb; text-decoration: none; }
+        .modal-nav { display: none; cursor: pointer; position: absolute; top: 50%; width: auto; padding: 16px; margin-top: -50px; color: white; font-weight: bold; font-size: 20px; transition: 0.6s ease; border-radius: 0 3px 3px 0; user-select: none; -webkit-user-select: none; background-color: rgba(0, 0, 0, 0.3); }
+        .modal-nav.prev { left: 0; border-radius: 3px 0 0 3px; }
+        .modal-nav.next { right: 0; border-radius: 0 3px 3px 0; }
+        .modal-nav:hover { background-color: rgba(0, 0, 0, 0.8); }
+        .modal-download-btn { position: absolute; bottom: 15px; right: 15px; color: white; font-size: 1.5rem; text-shadow: 0 0 5px black; opacity: 0.7; transition: opacity 0.2s; }
+        .modal-download-btn:hover { opacity: 1; color: #0d6efd; }
+        .original-prompt-box { border-left: 3px solid #6c757d; padding-left: 10px; margin-top: 5px; }
+        @media (min-width: 768px) { .modal-nav { display: block; } }
+        @media (max-width: 991px) { .image-modal-content-wrapper { flex-direction: column; } .image-modal-image, .image-modal-video { max-height: 60vh; } .image-modal-details { min-width: auto; } }
+
+        /* 模型選擇 Modal 樣式 */
+        .model-card { border: 1px solid #dee2e6; border-radius: .375rem; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; position: relative; }
+        .model-card:hover { transform: translateY(-5px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15); }
+        .model-card-img-container { width: 100%; height: 150px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; }
+        .model-card-img-container img { width: 100%; height: 100%; object-fit: cover; }
+        .model-card-img-container .bi { font-size: 3rem; color: #adb5bd; }
+        .model-card-title { font-size: 0.8rem; padding: 0.5rem; background-color: #f8f9fa; text-align: center; word-break: break-all; }
+        #model-selection-grid, #lora-selection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; }
+        .selected-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; display: inline-block; vertical-align: middle; }
+        .lora-card-checkbox { position: absolute; top: 5px; right: 5px; z-index: 10; }
+        #selected-lora-list { list-style: none; padding-left: 0; }
+        #selected-lora-list li { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem; }
+        #selected-lora-list .lora-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 1rem; }
+        #selected-lora-list .lora-weight { width: 80px; }
+        
+        #adetailer-options {
+            border-left: 3px solid #6c757d;
+            padding-left: 1rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+
+        /* 輸入頁籤樣式 */
+        .nav-tabs .nav-link { color: #6c757d; }
+        .nav-tabs .nav-link.active { color: #0d6efd; font-weight: bold; }
+        .upload-area {
+            border: 2px dashed #adb5bd;
+            border-radius: .375rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .upload-area:hover { background-color: #e9ecef; }
+        .preview-container { display: none; text-align: center; }
+        .preview-image { max-width: 100%; max-height: 250px; border-radius: .375rem; margin-bottom: 1rem; }
+        .input-tab.active-mode::after {
+            content: '✓';
+            color: #198754;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        /* --- 其他樣式 --- */
+        .form-control:disabled, .form-select:disabled, .form-check-input:disabled ~ .form-check-label { opacity: 0.65; }
+        .progress-bar.progress-bar-striped.progress-bar-animated { transition: width .6s ease; }
+        .form-check-sm { font-size: 0.875rem; }
+        .notification-status-badge { font-size: 0.75em; vertical-align: middle; }
+        .prompt-warning { font-size: 0.875rem; font-weight: bold; }
+        .fixed-prompt-position-options { border-top: 1px solid #dee2e6; padding-top: 1rem; margin-top: 1rem; }
+        .sampler-guide-btn { padding: 0.1rem 0.4rem; font-size: 0.8rem; line-height: 1; }
+        .table-responsive { font-size: 0.9rem; }
+        .table th, .table td { vertical-align: middle; }
+        .table .model-header { font-size: 1.1rem; font-weight: bold; }
+        .navbar-nav .nav-link { cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="spinner"></div>
-        <p id="status">正在初始化，請稍候...</p>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#"><i class="bi bi-robot"></i> 個人助理</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link active" id="nav-gemini"><i class="bi bi-chat-dots-fill"></i> Gemini 對話</a></li>
+                    <li class="nav-item"><a class="nav-link" id="nav-comfyui"><i class="bi bi-palette-fill"></i> ComfyUI 繪圖</a></li>
+                </ul>
+                <span id="user-status-display" class="navbar-text me-3"></span>
+                <div class="nav-item dropdown" id="device-selector-dropdown" style="display: none;">
+                    <a class="nav-link dropdown-toggle text-white" href="#" id="deviceSelector" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-gpu-card"></i> 選擇裝置
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="deviceSelector" id="device-selection-list">
+                        <!-- 裝置列表將由 JS 動態插入 -->
+                    </ul>
+                </div>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="gm-login-icon" title="GM 登入">
+                            <i class="bi bi-lock"></i>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mt-4">
+        <!-- Gemini 對話頁面 -->
+        <div id="gemini-page" class="page-content" style="display: block;">
+             <div class="row justify-content-center">
+                <div class="col-md-10 col-lg-8">
+                    <div class="d-grid gap-2 mb-3">
+                        <button id="gemini-start-btn" class="btn btn-primary" type="button">
+                            <i class="bi bi-power"></i> 啟動 / 重啟 GEMINI
+                        </button>
+                    </div>
+                    <div id="gemini-chat-window">
+                        <div class="chat-message gemini-message">
+                            <div class="message-bubble">您好！請點擊上方按鈕來啟動 Gemini 助理。</div>
+                        </div>
+                    </div>
+                    <form id="gemini-input-form" class="mt-3">
+                        <div class="input-group">
+                            <input type="text" id="gemini-input" class="form-control" placeholder="請先點擊上方按鈕啟動 Gemini" disabled>
+                            <button id="gemini-send-btn" class="btn btn-primary" type="submit" disabled>
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <!-- ComfyUI 繪圖頁面 -->
+        <div id="comfyui-page" class="page-content">
+            <div class="row">
+                <!-- 左側控制面板 -->
+                <div class="col-lg-5">
+                    <h4><i class="bi bi-gear-fill"></i> 控制面板</h4>
+                    <div class="card">
+                        <div class="card-body">
+                            <ul class="nav nav-tabs" id="control-panel-tabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="params-tab" data-bs-toggle="tab" data-bs-target="#tab-pane-params" type="button" role="tab" aria-controls="tab-pane-params" aria-selected="true">
+                                        <i class="bi bi-sliders"></i> 參數設定
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link input-tab" id="img2img-tab" data-bs-toggle="tab" data-bs-target="#tab-pane-img2img" type="button" role="tab" aria-controls="tab-pane-img2img" aria-selected="false">
+                                        <i class="bi bi-image"></i> 圖像輸入
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link input-tab" id="controlnet-tab" data-bs-toggle="tab" data-bs-target="#tab-pane-controlnet" type="button" role="tab" aria-controls="tab-pane-controlnet" aria-selected="false">
+                                        <i class="bi bi-joystick"></i> ControlNet
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="video-tab" data-bs-toggle="tab" data-bs-target="#tab-pane-video" type="button" role="tab" aria-controls="tab-pane-video" aria-selected="false">
+                                        <i class="bi bi-film"></i> 影片生成
+                                    </button>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content pt-3" id="control-panel-tab-content">
+                                <!-- 參數設定頁籤 -->
+                                <div class="tab-pane fade show active" id="tab-pane-params" role="tabpanel" aria-labelledby="params-tab" tabindex="0">
+                                    <div class="mb-3 d-flex">
+                                        <div class="flex-grow-1">
+                                            <label class="form-label"><strong>模型 (Checkpoint)</strong></label>
+                                            <button class="btn btn-outline-secondary w-100" type="button" data-bs-toggle="modal" data-bs-target="#model-selection-modal">
+                                                <span id="comfy-selected-model-name" class="selected-model-name">請選擇模型...</span>
+                                            </button>
+                                        </div>
+                                        <button class="btn btn-outline-success ms-2 align-self-end" type="button" data-bs-toggle="modal" data-bs-target="#download-model-modal" title="下載新模型">
+                                            <i class="bi bi-cloud-download-fill"></i>
+                                        </button>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label d-flex justify-content-between">
+                                            <strong>LoRA</strong>
+                                            <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#lora-selection-modal">
+                                                <i class="bi bi-plus-lg"></i> 新增/管理 LoRA
+                                            </button>
+                                        </label>
+                                        <div id="selected-lora-list-container" class="mt-2"></div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="comfy-positive-prompt" class="form-label"><strong>正面提示詞 (核心創意)</strong></label>
+                                        <textarea class="form-control" id="comfy-positive-prompt" rows="5" placeholder="請輸入核心創意..."></textarea>
+                                        <div id="comfy-positive-prompt-warning" class="text-danger mt-1 prompt-warning" style="display: none;"></div>
+                                        <div class="mt-2 d-flex justify-content-between align-items-center">
+                                            <fieldset id="prompt-optimization-fieldset">
+                                                <div class="form-check form-switch form-check-inline">
+                                                    <input type="checkbox" class="form-check-input" id="comfy-optimize-positive-checkbox" role="switch">
+                                                    <label class="form-check-label" for="comfy-optimize-positive-checkbox">提示詞強化</label>
+                                                </div>
+                                                <div class="form-check form-switch form-check-inline">
+                                                    <input type="checkbox" class="form-check-input" id="comfy-ai-optimize-checkbox" role="switch">
+                                                    <label class="form-check-label" for="comfy-ai-optimize-checkbox">AI 優化提示詞</label>
+                                                </div>
+                                            </fieldset>
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#fixed-prompt-modal">
+                                                <i class="bi bi-pin-angle-fill"></i> 固定提示詞
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="d-grid">
+                                            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#negative-prompt-modal">
+                                                <i class="bi bi-slash-circle"></i> 編輯負面提示詞
+                                            </button>
+                                        </div>
+                                        <div class="form-check form-check-sm mt-1">
+                                            <input type="checkbox" class="form-check-input" id="comfy-translate-negative-checkbox">
+                                            <label class="form-check-label" for="comfy-translate-negative-checkbox">翻譯負面提示詞</label>
+                                        </div>
+                                    </div>
+                                    
+                                    <hr>
+                                    <h5><i class="bi bi-person-bounding-box"></i> 臉部修復 (ADetailer)</h5>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-adetailer">
+                                        <label class="form-check-label" for="comfy-enable-adetailer">啟用臉部修復功能</label>
+                                    </div>
+                                    <div id="adetailer-options">
+                                        <div class="mb-2">
+                                            <label for="comfy-adetailer-positive-prompt" class="form-label small"><strong>臉部專用正面提示詞</strong></label>
+                                            <textarea class="form-control form-control-sm" id="comfy-adetailer-positive-prompt" rows="2" placeholder="指定臉部特徵..."></textarea>
+                                            <div class="form-check form-check-sm mt-1">
+                                                <input type="checkbox" class="form-check-input" id="comfy-translate-adetailer-positive-checkbox">
+                                                <label class="form-check-label" for="comfy-translate-adetailer-positive-checkbox">自動翻譯為英文</label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <hr>
+                                    <h5><i class="bi bi-sliders"></i> 採樣器設定</h5>
+                                    <div class="row g-3 mb-3 align-items-end">
+                                        <div class="col-sm-6">
+                                            <label for="comfy-seed" class="form-label">種子 (Seed)</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" id="comfy-seed" value="0">
+                                                <button class="btn btn-outline-secondary" type="button" id="comfy-random-seed-btn" title="隨機填入"><i class="bi bi-shuffle"></i></button>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label for="comfy-seed-behavior" class="form-label">種子行為</label>
+                                            <select class="form-select" id="comfy-seed-behavior">
+                                                <option value="increment">遞增</option><option value="decrement">遞減</option><option value="fixed">固定</option><option value="random">隨機</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-md-6">
+                                            <label for="comfy-steps" class="form-label">步數 (Steps)</label>
+                                            <input type="number" class="form-control" id="comfy-steps" value="20" min="1">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="comfy-cfg" class="form-label">CFG</label>
+                                            <input type="number" class="form-control" id="comfy-cfg" value="8.0" step="0.5">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="comfy-denoise" class="form-label">重繪強度 (Denoise)</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="comfy-denoise" value="1.0" step="0.01" min="0.0" max="1.0">
+                                        </div>
+                                        <small class="form-text text-muted">
+                                            文生圖: 1.0 | 圖生圖(SDXL): ~0.75 | 圖生圖(SD3): 0.5~0.75
+                                        </small>
+                                    </div>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-md-6">
+                                            <label for="comfy-sampler-name" class="form-label d-flex justify-content-between align-items-center">
+                                                <span>採樣器 (Sampler)</span>
+                                                <button class="btn btn-sm btn-outline-info sampler-guide-btn" type="button" data-bs-toggle="modal" data-bs-target="#sampler-guide-modal" title="採樣器指南">
+                                                    <i class="bi bi-info-circle"></i> 指南
+                                                </button>
+                                            </label>
+                                            <select class="form-select" id="comfy-sampler-name">
+                                                <!-- 選項將由 JavaScript 動態填充 -->
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="comfy-scheduler" class="form-label">調度器 (Scheduler)</label>
+                                            <select class="form-select" id="comfy-scheduler">
+                                                <!-- 選項將由 JavaScript 動態填充 -->
+                                            </select>
+                                        </div>
+                                    </div>
+                                     <div class="mb-3">
+                                        <label for="comfy-batch-size" class="form-label">批量大小</label>
+                                        <input type="number" class="form-control" id="comfy-batch-size" value="1" min="1" max="20">
+                                    </div>
+                                </div>
+                                <!-- 圖像輸入頁籤 -->
+                                <div class="tab-pane fade" id="tab-pane-img2img" role="tabpanel" aria-labelledby="img2img-tab" tabindex="0">
+                                    <input type="file" id="img2img-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                                    <div id="img2img-upload-area" class="upload-area">
+                                        <i class="bi bi-cloud-arrow-up-fill fs-1 text-secondary"></i>
+                                        <p class="mt-2 mb-0">點擊此處上傳圖片</p>
+                                        <small class="text-muted">將啟用以圖生圖模式</small>
+                                    </div>
+                                    <div id="img2img-preview-container" class="preview-container mt-3">
+                                        <img id="img2img-preview" src="#" alt="Image Preview" class="preview-image">
+                                        <div class="d-flex justify-content-between align-items-center mt-2">
+                                            <span id="img2img-filename" class="text-muted small text-truncate"></span>
+                                            <button class="btn btn-sm btn-outline-danger" id="img2img-clear-btn">
+                                                <i class="bi bi-trash3-fill"></i> 清除
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <label for="img2img-denoise-slider" class="form-label"><strong>重繪強度 (Denoise)</strong>: <span id="img2img-denoise-value-label">1.00</span></label>
+                                        <input type="range" class="form-range" id="img2img-denoise-slider" min="0" max="1" step="0.01" value="1.0">
+                                    </div>
+                                    <hr>
+                                    <h5><i class="bi bi-brush-fill"></i> 局部修圖遮罩 (Inpaint Mask)</h5>
+                                    <input type="file" id="mask-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                                    <div id="mask-upload-area" class="upload-area">
+                                        <i class="bi bi-cloud-arrow-up-fill fs-1 text-secondary"></i>
+                                        <p class="mt-2 mb-0">點擊上傳遮罩</p>
+                                        <small class="text-muted">白色區域為重繪部分</small>
+                                    </div>
+                                    <div id="mask-preview-container" class="preview-container mt-3">
+                                        <img id="mask-preview" src="#" alt="Mask Preview" class="preview-image">
+                                        <div class="d-flex justify-content-between align-items-center mt-2">
+                                            <span id="mask-filename" class="text-muted small text-truncate"></span>
+                                            <button class="btn btn-sm btn-outline-danger" id="mask-clear-btn">
+                                                <i class="bi bi-trash3-fill"></i> 清除
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- ControlNet 頁籤 -->
+                                <div class="tab-pane fade" id="tab-pane-controlnet" role="tabpanel" aria-labelledby="controlnet-tab" tabindex="0">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-controlnet">
+                                        <label class="form-check-label" for="comfy-enable-controlnet">啟用 ControlNet</label>
+                                    </div>
+                                    <div id="controlnet-options-container" style="display: none;">
+                                        <input type="file" id="controlnet-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                                        <div id="controlnet-upload-area" class="upload-area">
+                                            <i class="bi bi-cloud-arrow-up-fill fs-1 text-secondary"></i>
+                                            <p class="mt-2 mb-0">點擊上傳參考圖</p>
+                                        </div>
+                                        <div id="controlnet-preview-container" class="preview-container mt-3">
+                                            <img id="controlnet-preview" src="#" alt="ControlNet Image Preview" class="preview-image">
+                                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                                <span id="controlnet-filename" class="text-muted small text-truncate"></span>
+                                                <button class="btn btn-sm btn-outline-danger" id="controlnet-clear-btn">
+                                                    <i class="bi bi-trash3-fill"></i> 清除
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <hr>
+                                        <div class="mb-3">
+                                            <label for="comfy-controlnet-model" class="form-label"><strong>ControlNet 模型</strong></label>
+                                            <select class="form-select" id="comfy-controlnet-model"></select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="comfy-controlnet-preprocessor" class="form-label"><strong>預處理器 (Preprocessor)</strong></label>
+                                            <select class="form-select" id="comfy-controlnet-preprocessor"></select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="comfy-controlnet-strength" class="form-label"><strong>控制強度</strong>: <span id="controlnet-strength-value-label">1.0</span></label>
+                                            <input type="range" class="form-range" id="comfy-controlnet-strength" min="0" max="2" step="0.05" value="1.0">
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 影片生成頁籤 -->
+                                <div class="tab-pane fade" id="tab-pane-video" role="tabpanel" aria-labelledby="video-tab" tabindex="0">
+                                    <div class="mb-3">
+                                        <label for="video-main-prompt" class="form-label"><strong>影片提示詞 (核心創意)</strong></label>
+                                        <textarea class="form-control" id="video-main-prompt" rows="4" placeholder="請輸入影片的核心創意..."></textarea>
+                                        <div class="mt-2">
+                                            <fieldset id="video-prompt-optimization-fieldset">
+                                                <div class="form-check form-switch form-check-inline">
+                                                    <input type="checkbox" class="form-check-input" id="video-optimize-positive-checkbox" role="switch">
+                                                    <label class="form-check-label" for="video-optimize-positive-checkbox">提示詞強化</label>
+                                                </div>
+                                                <div class="form-check form-switch form-check-inline">
+                                                    <input type="checkbox" class="form-check-input" id="video-ai-optimize-checkbox" role="switch">
+                                                    <label class="form-check-label" for="video-ai-optimize-checkbox">AI 優化提示詞</label>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <div class="mb-3">
+                                        <label for="video-model-select" class="form-label"><strong>影片模型</strong></label>
+                                        <select class="form-select" id="video-model-select"></select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="video-generation-mode" class="form-label"><strong>生成模式</strong></label>
+                                        <select class="form-select" id="video-generation-mode">
+                                            <option value="text-to-video">文生影 (Text-to-Video)</option>
+                                            <option value="image-to-video">圖生影 (Image-to-Video)</option>
+                                        </select>
+                                        <small class="form-text text-muted">文生影將使用 SDXL 模型自動生成初始幀。</small>
+                                    </div>
+                                    <div id="video-upload-container" style="display: none;">
+                                        <hr>
+                                        <label class="form-label"><strong>初始圖片</strong></label>
+                                        <input type="file" id="video-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                                        <div id="video-upload-area" class="upload-area">
+                                            <i class="bi bi-cloud-arrow-up-fill fs-1 text-secondary"></i>
+                                            <p class="mt-2 mb-0">點擊上傳初始圖片</p>
+                                        </div>
+                                        <div id="video-preview-container" class="preview-container mt-3">
+                                            <img id="video-preview" src="#" alt="Video Init Image Preview" class="preview-image">
+                                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                                <span id="video-filename" class="text-muted small text-truncate"></span>
+                                                <button class="btn btn-sm btn-outline-danger" id="video-clear-btn">
+                                                    <i class="bi bi-trash3-fill"></i> 清除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <h5><i class="bi bi-gear-wide-connected"></i> 影片參數</h5>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-md-6">
+                                            <label for="video-frames" class="form-label">影片幀數</label>
+                                            <input type="number" class="form-control" id="video-frames" value="25" min="1">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="video-fps" class="form-label">每秒幀數 (FPS)</label>
+                                            <input type="number" class="form-control" id="video-fps" value="6" min="1">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="video-motion-bucket" class="form-label">運動幅度 (Motion Bucket ID)</label>
+                                        <input type="number" class="form-control" id="video-motion-bucket" value="127" min="0">
+                                        <small class="form-text text-muted">數值越高，運動越劇烈。</small>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="video-augmentation-level" class="form-label">增強級別: <span id="video-augmentation-level-label">0.00</span></label>
+                                        <input type="range" class="form-range" id="video-augmentation-level" min="0" max="1" step="0.01" value="0">
+                                        <small class="form-text text-muted">為初始圖片添加的噪聲量。</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr>
+                            <h5><i class="bi bi-bell-fill"></i> 通知設定</h5>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <span>桌面通知狀態: </span>
+                                    <span id="notification-status-badge" class="badge bg-secondary notification-status-badge">未知</span>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" id="enable-notifications-btn">啟用通知</button>
+                            </div>
+                            <div class="d-grid mt-4">
+                                <button class="btn btn-success btn-lg" id="comfy-generate-btn">
+                                    <span id="comfy-generate-spinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+                                    <i class="bi bi-brush-fill"></i> 開始生成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 右側結果與歷史紀錄 -->
+                <div class="col-lg-7 mt-4 mt-lg-0">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4><i class="bi bi-image-alt"></i> 生成結果</h4>
+                    </div>
+                    <div class="card mb-4">
+                        <div class="card-body text-center">
+                            <div id="comfy-status-text" class="text-muted mb-3">請在左側設定參數並點擊生成。</div>
+                            <div id="comfy-progress-container" class="mb-3" style="display: none;">
+                                <div class="progress" style="height: 25px;">
+                                    <div id="comfy-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                        <span id="comfy-progress-text"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="comfy-result-container">
+                                <img id="comfy-result-image" src="https://via.placeholder.com/512x512.png?text=等待生成" alt="ComfyUI 生成的圖片">
+                                <video id="comfy-result-video" controls loop style="display: none;"></video>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4><i class="bi bi-clock-history"></i> 歷史紀錄</h4>
+                        <div id="history-management-buttons">
+                            <button class="btn btn-sm btn-outline-secondary" id="history-select-btn" title="選擇"><i class="bi bi-check2-square"></i> 選擇</button>
+                            <button class="btn btn-sm btn-outline-danger" id="history-delete-all-btn" title="全部刪除"><i class="bi bi-trash3-fill"></i> 全部刪除</button>
+                        </div>
+                        <div id="history-selection-buttons" style="display: none;">
+                            <button class="btn btn-sm btn-primary" id="history-select-all-btn" title="全選"><i class="bi bi-check-all"></i> 全選</button>
+                            <button class="btn btn-sm btn-success" id="history-batch-download-btn" title="下載選中項"><i class="bi bi-download"></i> 下載 (<span id="history-selection-count">0</span>)</button>
+                            <button class="btn btn-sm btn-danger" id="history-batch-delete-btn" title="刪除選中項"><i class="bi bi-trash-fill"></i> 刪除 (<span id="history-selection-count-delete">0</span>)</button>
+                            <button class="btn btn-sm btn-secondary" id="history-cancel-select-btn" title="取消選擇"><i class="bi bi-x-lg"></i> 取消</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body">
+                            <div id="comfy-history-grid">
+                                <p class="text-muted">正在載入歷史紀錄...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 所有 Modals -->
+    <!-- ... 此處省略所有 Modal 的 HTML 結構以保持簡潔，實際檔案中應包含它們 ... -->
+    <!-- 模型選擇 Modal -->
+    <div class="modal fade" id="model-selection-modal" tabindex="-1" aria-labelledby="modelSelectionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modelSelectionModalLabel">選擇 Checkpoint 模型</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 p-2 border rounded" id="model-filter-container">
+                        <span class="me-3 fw-bold">篩選:</span>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input model-filter-checkbox" type="checkbox" id="filter-sd15" value="sd15" checked>
+                            <label class="form-check-label" for="filter-sd15">SD1.5</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input model-filter-checkbox" type="checkbox" id="filter-sdxl" value="sdxl" checked>
+                            <label class="form-check-label" for="filter-sdxl">SDXL</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input model-filter-checkbox" type="checkbox" id="filter-sd3" value="sd3" checked>
+                            <label class="form-check-label" for="filter-sd3">SD3</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input model-filter-checkbox" type="checkbox" id="filter-flux" value="flux" checked>
+                            <label class="form-check-label" for="filter-flux">FLUX</label>
+                        </div>
+                    </div>
+                    <div id="model-selection-grid"></div>
+                </div>
+            </div>
+        </div>
     </div>
-    <script src="loader.js?v=1753443153"></script>
+
+    <!-- LoRA 選擇 Modal -->
+    <div class="modal fade" id="lora-selection-modal" tabindex="-1" aria-labelledby="loraSelectionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loraSelectionModalLabel">選擇 LoRA 模型</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="lora-selection-grid"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="lora-confirm-selection-btn">確認選擇</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 負面提示詞 Modal -->
+    <div class="modal fade" id="negative-prompt-modal" tabindex="-1" aria-labelledby="negativePromptModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="negativePromptModalLabel">編輯負面提示詞</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea class="form-control" id="comfy-negative-prompt" rows="8" placeholder="輸入不想看到的內容..."></textarea>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary" id="negative-prompt-set-default-btn">填入預設</button>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 固定提示詞 Modal -->
+    <div class="modal fade" id="fixed-prompt-modal" tabindex="-1" aria-labelledby="fixedPromptModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="fixedPromptModalLabel">編輯固定提示詞</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">此處的內容將會自動附加到您的正面提示詞之後或之前。適合放置 `masterpiece, best quality` 等常用高品質詞彙。</p>
+                    <textarea class="form-control" id="comfy-fixed-prompt" rows="8" placeholder="輸入希望每次都自動加入的提示詞..."></textarea>
+                    
+                    <div class="fixed-prompt-position-options">
+                        <label class="form-label small">添加位置:</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="fixedPromptPosition" id="fixed-prompt-prepend" value="prepend" checked>
+                            <label class="form-check-label" for="fixed-prompt-prepend">置於前方</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="fixedPromptPosition" id="fixed-prompt-append" value="append">
+                            <label class="form-check-label" for="fixed-prompt-append">置於後方</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary" id="fixed-prompt-set-default-btn">填入預設</button>
+                    <button type="button" class="btn btn-primary" id="save-fixed-prompt-btn" data-bs-dismiss="modal">儲存並關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 圖片/影片 Modal (燈箱) 結構 -->
+    <div id="image-modal" class="image-modal">
+        <span id="modal-close-btn" class="image-modal-close">×</span>
+        <div class="image-modal-dialog">
+            <div class="image-modal-content-wrapper">
+                <a class="modal-nav prev" id="modal-prev-btn">❮</a>
+                <a class="modal-nav next" id="modal-next-btn">❯</a>
+                <div class="image-modal-media-container" id="modal-media-container">
+                    <img class="image-modal-image" id="modal-image">
+                    <video class="image-modal-video" id="modal-video" controls loop></video>
+                    <a id="modal-download-btn" class="modal-download-btn" href="#" download title="下載此檔案"><i class="bi bi-download"></i></a>
+                </div>
+                <div class="image-modal-details">
+                    <h4>生成參數</h4>
+                    <div class="param-group">
+                        <div class="param-label">主模型</div>
+                        <p class="param-value" id="modal-model"></p>
+                    </div>
+                    <div class="param-group">
+                        <div class="param-label">LoRA(s)</div>
+                        <div id="modal-lora-list"></div>
+                    </div>
+                    <div class="param-group" id="modal-img2img-info" style="display: none;">
+                        <div class="param-label">以圖生圖</div>
+                        <p class="param-value mb-1">
+                            源圖片: <span id="modal-source-image" class="text-truncate" style="max-width: 200px; display: inline-block; vertical-align: bottom;"></span>
+                        </p>
+                        <p class="param-value mb-0">
+                            重繪強度: <span id="modal-denoise"></span>
+                        </p>
+                    </div>
+                    <div class="param-group" id="modal-controlnet-info" style="display: none;">
+                        <div class="param-label">ControlNet</div>
+                        <p class="param-value mb-1">模型: <span id="modal-controlnet-model"></span></p>
+                        <p class="param-value mb-1">預處理器: <span id="modal-controlnet-preprocessor"></span></p>
+                        <p class="param-value mb-0">強度: <span id="modal-controlnet-strength"></span></p>
+                    </div>
+                    <div class="param-group" id="modal-video-info" style="display: none;">
+                        <div class="param-label">影片參數</div>
+                        <p class="param-value mb-1">SVD 模型: <span id="modal-svd-model"></span></p>
+                        <p class="param-value mb-1">幀數: <span id="modal-video-frames"></span> | FPS: <span id="modal-video-fps"></span></p>
+                        <p class="param-value mb-0">運動幅度: <span id="modal-motion-bucket"></span> | 增強級別: <span id="modal-augmentation-level"></span></p>
+                    </div>
+                    <div class="param-group">
+                        <div class="param-label">優化模式</div>
+                        <p class="param-value" id="modal-optimization-mode">無</p>
+                    </div>
+                    <hr>
+                    <div class="param-group" id="modal-input-prompt-container" style="display: none;">
+                        <div class="param-label">輸入的提示詞</div>
+                        <div class="prompt-box">
+                            <span id="modal-input-prompt"></span>
+                            <i class="bi bi-clipboard-check-fill copy-btn" title="複製" data-clipboard-target="#modal-input-prompt"></i>
+                        </div>
+                    </div>
+                    <div class="param-group" id="modal-fixed-prompt-container" style="display: none;">
+                        <div class="param-label">固定提示詞</div>
+                        <div class="prompt-box">
+                            <span id="modal-fixed-prompt"></span>
+                            <i class="bi bi-clipboard-check-fill copy-btn" title="複製" data-clipboard-target="#modal-fixed-prompt"></i>
+                        </div>
+                    </div>
+                    <div class="param-group">
+                        <div class="param-label">翻譯後最終提示詞 (Positive)</div>
+                        <div class="prompt-box">
+                            <span id="modal-final-positive-prompt"></span>
+                            <i class="bi bi-clipboard-check-fill copy-btn" title="複製" data-clipboard-target="#modal-final-positive-prompt"></i>
+                        </div>
+                    </div>
+                    <div class="param-group">
+                        <div class="param-label">負面提示詞</div>
+                        <div class="prompt-box">
+                            <span id="modal-negative-prompt"></span>
+                            <i class="bi bi-clipboard-check-fill copy-btn" title="複製" data-clipboard-target="#modal-negative-prompt"></i>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 param-group">
+                            <span class="param-label">種子 (Seed): </span>
+                            <span class="param-value" id="modal-seed"></span>
+                        </div>
+                        <div class="col-md-6 param-group">
+                            <span class="param-label">步數: </span>
+                            <span class="param-value" id="modal-steps"></span>
+                        </div>
+                        <div class="col-md-6 param-group">
+                            <span class="param-label">CFG: </span>
+                            <span class="param-value" id="modal-cfg"></span>
+                        </div>
+                        <div class="col-md-6 param-group">
+                            <span class="param-label">採樣器: </span>
+                            <span class="param-value" id="modal-sampler-name"></span>
+                        </div>
+                        <div class="col-md-6 param-group">
+                            <span class="param-label">調度器: </span>
+                            <span class="param-value" id="modal-scheduler"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 採樣器指南 Modal -->
+    <div class="modal fade" id="sampler-guide-modal" tabindex="-1" aria-labelledby="samplerGuideModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="samplerGuideModalLabel"><i class="bi bi-book-half"></i> 採樣器與排程器推薦指南</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">以下是在更新 ComfyUI 後，針對不同模型的最佳實踐組合。請注意，結果可能因提示詞和模型而異。</p>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>模型</th>
+                                    <th>使用場景</th>
+                                    <th>採樣器 (Sampler)</th>
+                                    <th>排程器 (Scheduler)</th>
+                                    <th>步數 (Steps)</th>
+                                    <th>備註</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td rowspan="3" class="model-header align-middle text-center"><strong>SD3</strong></td>
+                                    <td><strong>最高品質</strong></td>
+                                    <td><code>dpmpp_3m_sde_gpu</code></td>
+                                    <td><code>sgm_uniform</code></td>
+                                    <td>35 - 50</td>
+                                    <td>速度較慢，細節和質感最佳。</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">日常均衡</span></td>
+                                    <td><code>dpmpp_2m_sde_gpu</code></td>
+                                    <td><code>karras</code></td>
+                                    <td>28 - 35</td>
+                                    <td><strong>強烈推薦的起點。</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>快速預覽</strong></td>
+                                    <td><code>euler</code></td>
+                                    <td><code>sgm_uniform</code></td>
+                                    <td>20 - 25</td>
+                                    <td>速度最快，用於測試概念。</td>
+                                </tr>
+                                <tr>
+                                    <td rowspan="4" class="model-header align-middle text-center"><strong>SDXL</strong></td>
+                                    <td><strong>最高品質</strong></td>
+                                    <td><code>dpmpp_2m_sde_gpu</code></td>
+                                    <td><code>karras</code></td>
+                                    <td>30 - 40</td>
+                                    <td>經典高品質組合。</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-primary">日常均衡</span></td>
+                                    <td><code>dpmpp_2m</code></td>
+                                    <td><code>karras</code></td>
+                                    <td>25 - 30</td>
+                                    <td><strong>最常用的穩定組合。</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>快速預覽</strong></td>
+                                    <td><code>euler_ancestral</code></td>
+                                    <td><code>karras</code></td>
+                                    <td>20 - 25</td>
+                                    <td>速度快，略帶創意性。</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>極速生成</strong></td>
+                                    <td><code>lcm</code></td>
+                                    <td><code>sgm_uniform</code></td>
+                                    <td>4 - 8</td>
+                                    <td>速度極快，需搭配 LCM LoRA。</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- GM 登入 Modal -->
+    <div class="modal fade" id="gm-login-modal" tabindex="-1" aria-labelledby="gmLoginModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="gmLoginModalLabel">GM 身份驗證</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="gm-login-form">
+                        <div class="mb-3">
+                            <label for="gm-password-input" class="form-label">請輸入密碼</label>
+                            <input type="password" class="form-control" id="gm-password-input" required>
+                            <div id="gm-login-error" class="text-danger mt-2" style="display: none;">密碼錯誤！</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">登入</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模型下載 Modal -->
+    <div class="modal fade" id="download-model-modal" tabindex="-1" aria-labelledby="downloadModelModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="downloadModelModalLabel">下載新模型</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="download-model-form">
+                        <div class="mb-3">
+                            <label for="download-model-type" class="form-label">模型類型</label>
+                            <select class="form-select" id="download-model-type">
+                                <option value="checkpoint">主模型 (Checkpoint)</option>
+                                <option value="lora">LoRA</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="download-model-url" class="form-label">模型網址 (URL)</label>
+                            <input type="url" class="form-control" id="download-model-url" placeholder="https://civitai.com/api/download/models/..." required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="download-model-name" class="form-label">模型檔案名稱</label>
+                            <input type="text" class="form-control" id="download-model-name" placeholder="mymodel.safetensors" required>
+                            <small class="form-text text-muted">請包含副檔名，例如 .safetensors 或 .ckpt</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="download-model-preview" class="form-label">預覽圖 (可選)</label>
+                            <input class="form-control" type="file" id="download-model-preview" accept="image/png, image/jpeg, image/webp">
+                        </div>
+                        <div id="download-status" class="mt-3"></div>
+                        <button type="submit" id="download-model-submit-btn" class="btn btn-success w-100">
+                            <span id="download-model-spinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;"></span>
+                            開始下載
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 關鍵修改：載入 app.js 而不是 loader.js -->
+    <script src="js/app.js"></script>
 </body>
 </html>
