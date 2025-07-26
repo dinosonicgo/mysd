@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v15.3 (路徑修正): 將 Service Worker 的註冊路徑從 '/static/js/sw.js' 修正為 '/sw.js'，以匹配後端路由和 GitHub Pages 的部署結構，解決遠端訪問時 Service Worker 404 的問題。
  * v15.2 (總進度條實現): 重構進度條邏輯。現在會根據生成時的批量大小、步數和是否啟用 ADetailer 計算出一個理論總步數。WebSocket 收到的每個獨立進度會被換算並平滑地填充到總進度條中，為使用者提供一個連貫、準確的整體進度反饋。
  * v15.1 (致命錯誤修正): 將 comfyHistoryGrid 的宣告從 const 改為 let。解決了因在 initializeHistory 函式中重新賦值給常量，導致 TypeError 中斷整個 JS 初始化流程的問題，恢復了頁面所有按鈕的交互功能。
- * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1694,11 +1694,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v15.2');
+        console.log('應用程式已初始化 v15.3');
         
         if ('serviceWorker' in navigator) {
             try {
-                serviceWorkerRegistration = await navigator.serviceWorker.register('/static/js/sw.js');
+                // [v15.3 修正] 使用根路徑註冊 Service Worker
+                serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js');
+                console.log('Service Worker 註冊成功。');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }
