@@ -1,6 +1,7 @@
 // static/js/app.js
 
 /**
+ * v15.1 (致命錯誤修正): 將 comfyHistoryGrid 的宣告從 const 改為 let。解決了因在 initializeHistory 函式中重新賦值給常量，導致 TypeError 中斷整個 JS 初始化流程的問題，恢復了頁面所有按鈕的交互功能。
  * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
  * 1. 廢除頁面跳轉，前端現在是常駐主應用。
  * 2. 初始化時從 GitHub 讀取共享的 config.json。
@@ -9,7 +10,6 @@
  * 5. 新增 switchDevice 函式，負責處理裝置切換時的資料重載和 UI 更新。
  *
  * v14.2 (致命错误修正): 修正了因尝试对一个 const 常量（comfyHistoryGrid）重新赋值而导致的 "Assignment to constant variable" TypeError。此错误先前会中断整个初始化流程，导致所有按钮点击事件失效。现已将其声明方式改为 let，恢复了页面的全部交互功能。
- * v14.1 (完整性修正): 补全了因先前版本错误省略而缺失的所有辅助函数（如 updateNotificationUI, showImageInModal, addHistoryItemToGrid 等）。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const comfyStatusText = getById('comfy-status-text');
     const comfyResultImage = getById('comfy-result-image');
     const comfyResultVideo = getById('comfy-result-video');
+    // [v15.1 修正] 將 const 改為 let，以允許在 initializeHistory 中重新賦值
     let comfyHistoryGrid = getById('comfy-history-grid');
     const adetailerOptionsDiv = getById('adetailer-options');
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
