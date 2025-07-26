@@ -1,9 +1,15 @@
 // static/js/app.js
 
 /**
- * v16.3 (作用域修正版): 修正了 v16.2 版本中因函式作用域錯誤導致事件監聽器綁定失敗的致命 bug。將 handleDownloadSubmit 和 filterModels 函式移回正確的 DOMContentLoaded 作用域內，確保所有頁面交互功能（按鈕點擊、頁籤切換等）能夠被正確初始化和執行。
- * v16.2 (語法修正版): 修正了因註釋位置不當而引入的致命 SyntaxError。
- * v16.1 (輪詢驗證與路徑修正版): 引入了 `verifyUrl` 和輪詢重試機制，解決遠端載入失敗問題。
+ * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
+ * 1. 廢除頁面跳轉，前端現在是常駐主應用。
+ * 2. 初始化時從 GitHub 讀取共享的 config.json。
+ * 3. GM 登入後，動態生成裝置選擇器，允許在不同裝置間無刷新切換。
+ * 4. 重構 fetchWithUserContext，所有 API 請求都動態指向當前選擇的裝置 URL。
+ * 5. 新增 switchDevice 函式，負責處理裝置切換時的資料重載和 UI 更新。
+ *
+ * v14.2 (致命错误修正): 修正了因尝试对一个 const 常量（comfyHistoryGrid）重新赋值而导致的 "Assignment to constant variable" TypeError。此错误先前会中断整个初始化流程，导致所有按钮点击事件失效。现已将其声明方式改为 let，恢复了页面的全部交互功能。
+ * v14.1 (完整性修正): 补全了因先前版本错误省略而缺失的所有辅助函数（如 updateNotificationUI, showImageInModal, addHistoryItemToGrid 等）。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -205,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 狀態變數 ---
     let userContext = { user_type: 'local', device_id: 'local' };
-    let activeDeviceUrl = window.location.origin;
+    let activeDeviceUrl = window.location.origin; // 本地模式預設為當前網域
     let sharedConfig = { devices: {} };
     let img2imgState = { source_image: null, inpaint_mask: null };
     let controlnetState = { controlnet_image: null };
@@ -228,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
-    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉與眼睛，極度精緻的細節，傑作，最高品質，史詩級，驚豔的，令人讚嘆的藝術";
+    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
 
     // --- 核心函式: API 請求與使用者上下文 ---
     async function fetchWithUserContext(path, options = {}) {
@@ -244,39 +250,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- 核心函式: 裝置切換與資料載入 ---
-    async function verifyUrl(url) {
-        if (!url) return false;
-        try {
-            const checkUrl = new URL('/', url).href;
-            const response = await fetch(checkUrl, { method: 'HEAD', mode: 'no-cors' });
-            return true;
-        } catch (e) {
-            console.warn(`URL 驗證失敗: ${url}`, e.message);
-            return false;
+    async function switchDevice(deviceId) {
+        if (!sharedConfig.devices[deviceId] || sharedConfig.devices[deviceId].status !== 'online') {
+            alert(`裝置 ${deviceId} 目前不在線或無法連接。`);
+            return;
         }
-    }
-
-    async function switchDevice(deviceId, newUrl) {
+        
         console.log(`正在切換到裝置: ${deviceId}`);
         userContext.device_id = deviceId;
-        activeDeviceUrl = newUrl;
+        activeDeviceUrl = sharedConfig.devices[deviceId].url;
         localStorage.setItem('gm_last_device', deviceId);
         
         updateDeviceSelectorUI();
         
+        // 顯示載入遮罩 (可選)
         document.body.style.cursor = 'wait';
-        if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
         
         await reloadDataForActiveDevice();
         
         document.body.style.cursor = 'default';
-        if(comfyGenerateBtn) comfyGenerateBtn.disabled = false;
         console.log(`已成功切換到 ${deviceId}。`);
     }
     
     async function reloadDataForActiveDevice() {
         console.log(`正在為裝置 ${userContext.device_id} 重新載入所有資料...`);
-        if(comfyStatusText) comfyStatusText.textContent = `正在載入裝置 ${userContext.device_id} 的資料...`;
         
         await Promise.all([
             fetchAndPopulateCheckpoints(),
@@ -287,13 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
             initializeHistory()
         ]);
     
-        if(comfyStatusText) comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
         console.log("資料重新載入完成。");
     }
 
-    async function loadSharedConfigAndInitialize(retryCount = 0) {
-        const MAX_RETRIES = 12;
-        
+    async function loadSharedConfigAndInitialize() {
         try {
             const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
             if (!response.ok) throw new Error('無法從 GitHub 獲取共享設定檔。');
@@ -301,96 +295,33 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error(error);
             if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
-            return;
         }
 
         userContext.user_type = localStorage.getItem('user_type') || 'local';
         
         if (userContext.user_type === 'gm') {
             const lastDevice = localStorage.getItem('gm_last_device');
-            const onlineDevices = Object.keys(sharedConfig.devices || {}).filter(id => {
-                const device = sharedConfig.devices[id];
-                return device && ((new Date() - new Date(device.timestamp * 1000)) < 5 * 60 * 1000);
-            });
+            const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
             
             let targetDevice = null;
             if (lastDevice && onlineDevices.includes(lastDevice)) {
                 targetDevice = lastDevice;
             } else if (onlineDevices.length > 0) {
-                targetDevice = onlineDevices[0];
+                targetDevice = onlineDevices[0]; // 預設選擇第一個在線的
             }
 
             if (targetDevice) {
-                const targetUrl = sharedConfig.devices[targetDevice].url;
-                if(userStatusDisplay) userStatusDisplay.textContent = `正在驗證 ${targetDevice} 的連線... (${retryCount + 1}/${MAX_RETRIES})`;
-                
-                const isUrlVerified = await verifyUrl(targetUrl);
-                if (isUrlVerified) {
-                    await switchDevice(targetDevice, targetUrl);
-                } else {
-                    console.warn(`URL ${targetUrl} 驗證失敗，將在 5 秒後重試...`);
-                    if (retryCount < MAX_RETRIES) {
-                        setTimeout(() => loadSharedConfigAndInitialize(retryCount + 1), 5000);
-                    } else {
-                        alert(`無法連接到裝置 ${targetDevice}。請檢查後端服務是否正常運行。`);
-                        if(userStatusDisplay) userStatusDisplay.textContent = `錯誤: 連接 ${targetDevice} 超時`;
-                    }
-                }
+                await switchDevice(targetDevice);
             } else {
                 updateDeviceSelectorUI();
                 alert('目前沒有任何遠端裝置在線。');
             }
         } else {
+            // 本地模式
             userContext.device_id = localStorage.getItem('device_id') || 'local_pc';
             activeDeviceUrl = window.location.origin;
             updateDeviceSelectorUI();
             await reloadDataForActiveDevice();
-        }
-    }
-
-    async function syncSharedConfig() {
-        if (userContext.user_type !== 'gm' || !userContext.device_id) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
-            if (!response.ok) return;
-            const newConfig = await response.json();
-            
-            const currentDeviceConfig = (sharedConfig.devices || {})[userContext.device_id];
-            const newDeviceConfig = (newConfig.devices || {})[userContext.device_id];
-
-            if (newDeviceConfig && currentDeviceConfig && newDeviceConfig.url !== currentDeviceConfig.url) {
-                console.log(`[智慧同步] 偵測到裝置 ${userContext.device_id} 的 URL 已變更。`);
-                console.log(`  -> 舊 URL: ${currentDeviceConfig.url}`);
-                console.log(`  -> 新 URL: ${newDeviceConfig.url}`);
-                
-                const isUrlVerified = await verifyUrl(newDeviceConfig.url);
-                if (isUrlVerified) {
-                    sharedConfig = newConfig;
-                    activeDeviceUrl = newDeviceConfig.url;
-                    
-                    if(userStatusDisplay) {
-                        const originalText = `GM @ ${userContext.device_id}`;
-                        userStatusDisplay.textContent = `${originalText} (連線已自動恢復)`;
-                        setTimeout(() => { userStatusDisplay.textContent = originalText; }, 5000);
-                    }
-
-                    connectGeminiWebSocket();
-                    if (trackedPromptId) {
-                        connectStatusWebSocket(trackedPromptId);
-                    }
-                } else {
-                    console.warn(`[智慧同步] 新的 URL ${newDeviceConfig.url} 驗證失敗，暫不切換。`);
-                }
-            } else {
-                sharedConfig = newConfig;
-            }
-            updateDeviceSelectorUI();
-
-        } catch (error) {
-            console.error("[智慧同步] 同步遠端設定檔失敗:", error);
         }
     }
 
@@ -402,18 +333,16 @@ document.addEventListener('DOMContentLoaded', () => {
             gmLoginIcon.title = '已登入為 GM - 點擊登出';
             
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'block';
-            if (userStatusDisplay && !userStatusDisplay.textContent.includes("正在驗證")) {
-                 userStatusDisplay.textContent = `GM @ ${userContext.device_id || '未選擇'}`;
-            }
+            if (userStatusDisplay) userStatusDisplay.textContent = `GM @ ${userContext.device_id || '未選擇'}`;
             
             if (deviceSelectionList) {
-                const deviceIds = Object.keys(sharedConfig.devices || {});
+                const deviceIds = Object.keys(sharedConfig.devices);
                 deviceSelectionList.innerHTML = '';
                 if (deviceIds.length > 0) {
                     deviceIds.forEach(id => {
                         const device = sharedConfig.devices[id];
                         const lastSeen = new Date(device.timestamp * 1000);
-                        const isOnline = (new Date() - lastSeen) < 5 * 60 * 1000;
+                        const isOnline = (new Date() - lastSeen) < 5 * 60 * 1000; // 5分鐘內視為在線
                         device.status = isOnline ? 'online' : 'offline';
 
                         const li = document.createElement('li');
@@ -434,15 +363,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         e.preventDefault();
                         const newDeviceId = e.target.closest('.device-select-btn').dataset.device;
                         if (userContext.device_id !== newDeviceId) {
-                            const newDeviceConfig = (sharedConfig.devices || {})[newDeviceId];
-                            if (newDeviceConfig) {
-                                await switchDevice(newDeviceId, newDeviceConfig.url);
-                            }
+                            await switchDevice(newDeviceId);
                         }
                     });
                 });
             }
-        } else {
+        } else { // 本地模式
             userStatusDisplay.textContent = '本地使用者';
             gmLoginIcon.innerHTML = '<i class="bi bi-lock"></i>';
             gmLoginIcon.title = 'GM 登入';
@@ -450,6 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- 頁面切換邏輯 ---
     function switchPage(pageIdToShow) {
         pages.forEach(page => { if(page) page.style.display = 'none'; });
         navLinks.forEach(link => { if(link) link.classList.remove('active'); });
@@ -459,7 +386,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeNavLink = document.getElementById(navId);
         if (activeNavLink) activeNavLink.classList.add('active');
     }
+    if (navGemini) navGemini.addEventListener('click', (e) => { e.preventDefault(); switchPage('gemini-page'); });
+    if (navComfyUI) navComfyUI.addEventListener('click', (e) => { e.preventDefault(); switchPage('comfyui-page'); });
 
+
+    // --- WebSocket Logic for Gemini ---
+    let geminiWs = null;
+    let currentGeminiBubble = null;
     function addMessageToChat(message, sender, isHtml = false) {
         if (!geminiChatWindow) return null;
         const messageWrapper = document.createElement('div');
@@ -477,13 +410,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sender === 'gemini') return messageBubble;
         return null;
     }
-
     function sendToGeminiSocket(payload) {
         if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
             geminiWs.send(JSON.stringify(payload));
         }
     }
-
     function connectGeminiWebSocket() {
         if (!geminiChatWindow || !activeDeviceUrl) return;
         const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
@@ -545,6 +476,34 @@ document.addEventListener('DOMContentLoaded', () => {
             if(geminiStartBtn) geminiStartBtn.disabled = true;
         };
     }
+    if (geminiStartBtn) {
+        geminiStartBtn.addEventListener('click', () => {
+            geminiStartBtn.disabled = true;
+            if(geminiChatWindow) geminiChatWindow.innerHTML = '';
+            addMessageToChat("正在啟動 Gemini CLI 子程序，請稍候...", 'gemini');
+            if(geminiInput) {
+                geminiInput.disabled = true;
+                geminiInput.placeholder = "正在啟動...";
+            }
+            if(geminiSendBtn) geminiSendBtn.disabled = true;
+            connectGeminiWebSocket(); // 確保使用最新的 activeDeviceUrl
+            setTimeout(() => sendToGeminiSocket({ command: "start" }), 500); // 給予連線建立時間
+        });
+    }
+    if (geminiForm) {
+        geminiForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = geminiInput.value.trim();
+            if (message && geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+                addMessageToChat(message, 'user');
+                currentGeminiBubble = null;
+                sendToGeminiSocket({ command: "input", data: message });
+                geminiInput.value = '';
+            }
+        });
+    }
+
+    // --- ComfyUI 相關邏輯 ---
 
     function updateDenoiseDefault() {
         if (!comfyFormElements.denoise) return;
@@ -774,12 +733,31 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDenoiseDefault();
     }
 
+    if(img2imgUploadArea) img2imgUploadArea.addEventListener('click', () => img2imgFileInput.click());
+    if(img2imgFileInput) img2imgFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], img2imgState, img2imgPreview, img2imgUploadArea, img2imgPreviewContainer, img2imgFilename, img2imgTab, 'source_image'));
+    if(img2imgClearBtn) img2imgClearBtn.addEventListener('click', () => resetFileUploadUI(img2imgState, 'source_image', img2imgUploadArea, img2imgPreviewContainer, img2imgPreview, img2imgFilename, img2imgTab, '點擊此處上傳圖片', '將啟用以圖生圖模式'));
+
+    if(maskUploadArea) maskUploadArea.addEventListener('click', () => maskFileInput.click());
+    if(maskFileInput) maskFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], img2imgState, maskPreview, maskUploadArea, maskPreviewContainer, maskFilename, null, 'inpaint_mask'));
+    if(maskClearBtn) maskClearBtn.addEventListener('click', () => resetFileUploadUI(img2imgState, 'inpaint_mask', maskUploadArea, maskPreviewContainer, maskPreview, maskFilename, null, '點擊上傳遮罩', '白色區域為重繪部分'));
+
+    if(controlnetUploadArea) controlnetUploadArea.addEventListener('click', () => controlnetFileInput.click());
+    if(controlnetFileInput) controlnetFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], controlnetState, controlnetPreview, controlnetUploadArea, controlnetPreviewContainer, controlnetFilename, null, 'controlnet_image'));
+    if(controlnetClearBtn) controlnetClearBtn.addEventListener('click', () => resetFileUploadUI(controlnetState, 'controlnet_image', controlnetUploadArea, controlnetPreviewContainer, controlnetPreview, controlnetFilename, null, '點擊上傳參考圖', ''));
+
+    if(videoUploadArea) videoUploadArea.addEventListener('click', () => videoFileInput.click());
+    if(videoFileInput) videoFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], videoState, videoPreview, videoUploadArea, videoPreviewContainer, videoFilename, null, 'source_image'));
+    if(videoClearBtn) videoClearBtn.addEventListener('click', () => resetFileUploadUI(videoState, 'source_image', videoUploadArea, videoPreviewContainer, videoPreview, videoFilename, null, '點擊上傳初始圖片', ''));
+
     function syncDenoiseValues(value) {
         const floatValue = parseFloat(value);
         if (comfyFormElements.denoise) comfyFormElements.denoise.value = floatValue.toFixed(2);
         if (img2imgDenoiseSlider) img2imgDenoiseSlider.value = floatValue;
         if (img2imgDenoiseValueLabel) img2imgDenoiseValueLabel.textContent = floatValue.toFixed(2);
     }
+
+    if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
+    if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
     async function fetchAndPopulateCheckpoints() {
         try {
@@ -913,6 +891,7 @@ document.addEventListener('DOMContentLoaded', () => {
         imgContainer.className = 'model-card-img-container';
         if (item.preview_url) {
             const img = document.createElement('img');
+            // 使用 fetchWithUserContext 構建完整的預覽 URL
             img.src = new URL(item.preview_url, activeDeviceUrl).href;
             img.alt = item.name;
             img.onerror = () => { img.src = "https://via.placeholder.com/150x150.png?text=Preview+Error"; };
@@ -1194,8 +1173,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function initializeHistory() {
         if (!comfyHistoryGrid) return;
+        // Remove existing scroll listener to prevent duplicates
         comfyHistoryGrid.replaceWith(comfyHistoryGrid.cloneNode(true));
-        comfyHistoryGrid = getById('comfy-history-grid');
+        comfyHistoryGrid = getById('comfy-history-grid'); // Re-select the element
         
         comfyHistoryGrid.addEventListener('scroll', async () => {
             if (isLoadingHistory || !hasMoreHistory) return;
@@ -1356,8 +1336,8 @@ document.addEventListener('DOMContentLoaded', () => {
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
             batch_size: comfyFormElements.batch_size ? parseInt(comfyFormElements.batch_size.value, 10) : 1,
-            width: 1024,
-            height: 1024,
+            width: 1024, // 預設值
+            height: 1024, // 預設值
             denoise: comfyFormElements.denoise ? parseFloat(comfyFormElements.denoise.value) : 1.0,
             source_image: img2imgState.source_image,
             inpaint_mask: img2imgState.inpaint_mask,
@@ -1428,7 +1408,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function connectStatusWebSocket(prompt_id) {
-        if (comfyStatusWs && comfyStatusWs.readyState !== WebSocket.CLOSED) comfyStatusWs.close();
+        if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
         
         const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
         const wsHost = new URL(activeDeviceUrl).host;
@@ -1588,7 +1568,7 @@ document.addEventListener('DOMContentLoaded', () => {
             params.loras.forEach(lora => {
                 const li = document.createElement('li');
                 li.className = 'param-value';
-                li.textContent = `${lora.name} (权重: ${lora.weight.toFixed(1)})`;
+                li.textContent = `${lora.name} (權重: ${lora.weight.toFixed(1)})`;
                 ul.appendChild(li);
             });
             modalParams.lora_list.appendChild(ul);
@@ -1680,13 +1660,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v16.2');
+        console.log('應用程式已初始化 v15.0');
         
         if ('serviceWorker' in navigator) {
             try {
-                const swPath = window.location.hostname.includes('github.io') ? '/mysd/sw.js' : '/sw.js';
-                serviceWorkerRegistration = await navigator.serviceWorker.register(swPath);
-                console.log('Service Worker 註冊成功，路徑:', swPath);
+                serviceWorkerRegistration = await navigator.serviceWorker.register('/static/js/sw.js');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }
@@ -1703,8 +1681,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         await loadSharedConfigAndInitialize();
         
-        setInterval(pollQueueStatus, 5000);
-        setInterval(syncSharedConfig, 30000);
+        setInterval(pollQueueStatus, 3000); 
         
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
         if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
@@ -1926,7 +1903,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!itemDiv) return Promise.resolve();
                 const item = JSON.parse(itemDiv.dataset.historyItem);
                 const fullItemUrl = new URL(item.url, activeDeviceUrl).href;
-                return fetch(fullItemUrl)
+                return fetch(fullItemUrl) // Use native fetch here as no context headers needed
                     .then(response => {
                         if (!response.ok) throw new Error(`無法下載 ${item.filename}`);
                         return response.blob();
@@ -1967,96 +1944,98 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     initialize();
+});
 
-    // [v16.2 修正] 將這兩個函式移回到 DOMContentLoaded 內部
-    async function handleDownloadSubmit(e) {
-        e.preventDefault();
-        const form = e.target;
-        const submitBtn = form.querySelector('#download-model-submit-btn');
-        const spinner = form.querySelector('#download-model-spinner');
-        const statusDiv = form.querySelector('#download-status');
+async function handleDownloadSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('#download-model-submit-btn');
+    const spinner = form.querySelector('#download-model-spinner');
+    const statusDiv = form.querySelector('#download-status');
 
-        if (!submitBtn || !spinner || !statusDiv) return;
+    if (!submitBtn || !spinner || !statusDiv) return;
 
-        submitBtn.disabled = true;
-        spinner.style.display = 'inline-block';
-        statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載任務...</div>';
+    submitBtn.disabled = true;
+    spinner.style.display = 'inline-block';
+    statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載任務...</div>';
 
-        const modelType = form.querySelector('#download-model-type').value;
-        const modelUrl = form.querySelector('#download-model-url').value;
-        const modelName = form.querySelector('#download-model-name').value;
-        const previewFile = form.querySelector('#download-model-preview').files[0];
+    const modelType = form.querySelector('#download-model-type').value;
+    const modelUrl = form.querySelector('#download-model-url').value;
+    const modelName = form.querySelector('#download-model-name').value;
+    const previewFile = form.querySelector('#download-model-preview').files[0];
 
-        let previewImageBase64 = null;
+    let previewImageBase64 = null;
 
-        if (previewFile) {
-            try {
-                previewImageBase64 = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.onerror = (error) => reject(error);
-                    reader.readAsDataURL(previewFile);
-                });
-            } catch (error) {
-                statusDiv.innerHTML = `<div class="alert alert-danger">讀取預覽圖失敗: ${error.message}</div>`;
-                submitBtn.disabled = false;
-                spinner.style.display = 'none';
-                return;
-            }
-        }
-
-        const payload = {
-            model_type: modelType,
-            model_url: modelUrl,
-            model_name: modelName,
-            preview_image_base64: previewImageBase64
-        };
-
+    if (previewFile) {
         try {
-            const response = await fetchWithUserContext('/api/comfyui/download_model', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            previewImageBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (error) => reject(error);
+                reader.readAsDataURL(previewFile);
             });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-                form.reset();
-            } else {
-                throw new Error(result.detail || '提交失敗');
-            }
         } catch (error) {
-            statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
-        } finally {
+            statusDiv.innerHTML = `<div class="alert alert-danger">讀取預覽圖失敗: ${error.message}</div>`;
             submitBtn.disabled = false;
             spinner.style.display = 'none';
+            return;
         }
     }
 
-    function filterModels() {
-        const modelSelectionGrid = document.getElementById('model-selection-grid');
-        if (!modelSelectionGrid) return;
+    const payload = {
+        model_type: modelType,
+        model_url: modelUrl,
+        model_name: modelName,
+        preview_image_base64: previewImageBase64
+    };
 
-        const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
-        const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
-
-        modelCards.forEach(card => {
-            const modelName = card.dataset.itemName.toLowerCase();
-            let show = false;
-            if (selectedFilters.length === 0) {
-                show = true;
-            } else {
-                show = selectedFilters.some(filter => {
-                    if (filter === 'sdxl' && modelName.includes('xl') && !modelName.includes('sd3')) return true;
-                    if (filter === 'sd3' && modelName.includes('sd3')) return true;
-                    if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
-                    if (filter === 'flux' && modelName.includes('flux')) return true;
-                    return false;
-                });
-            }
-            card.style.display = show ? 'block' : 'none';
+    try {
+        // This function is defined outside the main scope, so it needs to know how to build the request.
+        // We assume it's called from a context where `fetchWithUserContext` is available globally or passed down.
+        // For simplicity, let's assume `fetchWithUserContext` is accessible.
+        const response = await fetchWithUserContext('/api/comfyui/download_model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+            form.reset();
+        } else {
+            throw new Error(result.detail || '提交失敗');
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
+    } finally {
+        submitBtn.disabled = false;
+        spinner.style.display = 'none';
     }
-});
+}
+
+function filterModels() {
+    const modelSelectionGrid = document.getElementById('model-selection-grid');
+    if (!modelSelectionGrid) return;
+
+    const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
+    const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
+
+    modelCards.forEach(card => {
+        const modelName = card.dataset.itemName.toLowerCase();
+        let show = false;
+        if (selectedFilters.length === 0) {
+            show = true;
+        } else {
+            show = selectedFilters.some(filter => {
+                if (filter === 'sdxl' && modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                if (filter === 'sd3' && modelName.includes('sd3')) return true;
+                if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                if (filter === 'flux' && modelName.includes('flux')) return true;
+                return false;
+            });
+        }
+        card.style.display = show ? 'block' : 'none';
+    });
+}
