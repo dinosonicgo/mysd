@@ -1,15 +1,9 @@
 // static/js/app.js
 
 /**
+ * v15.2 (總進度條實現): 重構進度條邏輯。現在會根據生成時的批量大小、步數和是否啟用 ADetailer 計算出一個理論總步數。WebSocket 收到的每個獨立進度會被換算並平滑地填充到總進度條中，為使用者提供一個連貫、準確的整體進度反饋。
  * v15.1 (致命錯誤修正): 將 comfyHistoryGrid 的宣告從 const 改為 let。解決了因在 initializeHistory 函式中重新賦值給常量，導致 TypeError 中斷整個 JS 初始化流程的問題，恢復了頁面所有按鈕的交互功能。
  * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
- * 1. 廢除頁面跳轉，前端現在是常駐主應用。
- * 2. 初始化時從 GitHub 讀取共享的 config.json。
- * 3. GM 登入後，動態生成裝置選擇器，允許在不同裝置間無刷新切換。
- * 4. 重構 fetchWithUserContext，所有 API 請求都動態指向當前選擇的裝置 URL。
- * 5. 新增 switchDevice 函式，負責處理裝置切換時的資料重載和 UI 更新。
- *
- * v14.2 (致命错误修正): 修正了因尝试对一个 const 常量（comfyHistoryGrid）重新赋值而导致的 "Assignment to constant variable" TypeError。此错误先前会中断整个初始化流程，导致所有按钮点击事件失效。现已将其声明方式改为 let，恢复了页面的全部交互功能。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -63,7 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const comfyStatusText = getById('comfy-status-text');
     const comfyResultImage = getById('comfy-result-image');
     const comfyResultVideo = getById('comfy-result-video');
-    // [v15.1 修正] 將 const 改為 let，以允許在 initializeHistory 中重新賦值
     let comfyHistoryGrid = getById('comfy-history-grid');
     const adetailerOptionsDiv = getById('adetailer-options');
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
@@ -224,7 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let isSelectionMode = false;
     let selectedItems = new Set();
     let tempSelectedLoras = new Set();
-    let currentBatchSize = 1;
     let trackedPromptId = null; 
     let wasPreviouslyRunning = false;
     let serviceWorkerRegistration = null;
@@ -232,6 +224,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let hasMoreHistory = true;
     const GM_PASSWORD = "781111";
     const GITHUB_CONFIG_URL = 'https://dinosonicgo.github.io/mysd/config.json';
+    
+    // [v15.2 新增] 用於總進度條的狀態管理
+    let currentJobState = null;
 
     // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
@@ -1278,6 +1273,7 @@ document.addEventListener('DOMContentLoaded', () => {
             comfyStatusText.style.display = 'block';
         }
         trackedPromptId = null; 
+        currentJobState = null; // [v15.2] 清理任務狀態
     };
 
     function setGeneratingState(promptId) {
@@ -1373,7 +1369,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     
-        currentBatchSize = payload.batch_size;
+        // [v15.2] 初始化總進度條狀態
+        const batchSize = payload.batch_size > 10 ? 10 : payload.batch_size;
+        const steps = payload.steps;
+        const adetailerEnabled = payload.enable_adetailer;
+        const stages = adetailerEnabled ? 2 : 1;
+        currentJobState = {
+            totalImages: batchSize,
+            stepsPerImage: steps,
+            adetailerEnabled: adetailerEnabled,
+            grandTotalSteps: batchSize * steps * stages,
+            currentImageIndex: 0,
+            isDetailing: false,
+        };
     
         try {
             const response = await fetchWithUserContext('/api/comfyui/generate', {
@@ -1425,15 +1433,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
             switch (message.type) {
                 case 'progress':
-                    const data = message.data;
-                    const percent = data.total_steps > 0 ? (data.current_step / data.total_steps) * 100 : 0;
-                    if(comfyStatusText) comfyStatusText.style.display = 'none';
-                    if(comfyProgressContainer) comfyProgressContainer.style.display = 'block';
-                    if(comfyProgressBar) {
-                        comfyProgressBar.style.width = `${percent}%`;
-                        comfyProgressBar.setAttribute('aria-valuenow', percent);
+                    // [v15.2] 總進度條核心邏輯
+                    if (currentJobState) {
+                        const data = message.data;
+                        const { currentImageIndex, isDetailing, stepsPerImage, grandTotalSteps, totalImages, adetailerEnabled } = currentJobState;
+                        
+                        const completedStepsBeforeThisStage = (currentImageIndex * stepsPerImage) * (adetailerEnabled ? 2 : 1) + (isDetailing ? stepsPerImage : 0);
+                        const currentStageProgress = data.current_step;
+                        const totalCompletedSteps = completedStepsBeforeThisStage + currentStageProgress;
+                        
+                        const totalPercent = grandTotalSteps > 0 ? (totalCompletedSteps / grandTotalSteps) * 100 : 0;
+
+                        if(comfyStatusText) comfyStatusText.style.display = 'none';
+                        if(comfyProgressContainer) comfyProgressContainer.style.display = 'block';
+                        if(comfyProgressBar) {
+                            comfyProgressBar.style.width = `${totalPercent}%`;
+                            comfyProgressBar.setAttribute('aria-valuenow', totalPercent);
+                        }
+                        
+                        let statusString = `總進度: ${totalPercent.toFixed(1)}% | 圖片 ${currentImageIndex + 1} / ${totalImages}`;
+                        if (adetailerEnabled) {
+                            statusString += isDetailing ? " (臉部修復中...)" : " (主要生成中...)";
+                        }
+                        if(comfyProgressText) comfyProgressText.textContent = statusString;
+                        
+                        // 狀態轉移
+                        if (data.current_step === data.total_steps) {
+                            if (adetailerEnabled && !isDetailing) {
+                                currentJobState.isDetailing = true;
+                            } else {
+                                currentJobState.currentImageIndex++;
+                                currentJobState.isDetailing = false;
+                            }
+                        }
                     }
-                    if(comfyProgressText) comfyProgressText.textContent = `進度: ${data.current_step} / ${data.total_steps}`;
                     break;
                 case 'item_generated':
                     const itemData = message.data;
@@ -1661,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v15.0');
+        console.log('應用程式已初始化 v15.2');
         
         if ('serviceWorker' in navigator) {
             try {
