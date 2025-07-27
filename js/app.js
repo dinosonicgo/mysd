@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.4 (通知修正): 修正了 `subscribeToPush` 函式，使其能正確從新增的後端端點 `/api/comfyui/vapid_public_key` 獲取公鑰。增加了對 fetch 回應的驗證，確保在收到有效的公鑰後才繼續執行訂閱邏輯，從而解決了 `TypeError` 和 `405` 錯誤。
+ * v17.3 (進度條修正): 1. 修正了 `handleGenerateClick` 中 `totalExpectedSteps` 的計算邏輯，使其在啟用 ADetailer 時能正確加總主生成與臉部修復的步數。 2. 改善了 `connectStatusWebSocket` 中的進度更新邏輯，使其能更穩定地處理來自多個 KSampler 節點（如主生成+臉部修復）的進度訊息，確保進度條能正確達到 100%。
  * v17.2 (功能恢復與整合): 恢復並整合了 v17.0 版本中實現的互動式遮罩繪製功能，並將其與 v17.1 版本中的本地/遠端登入狀態分離邏輯合併，確保所有功能完整。
- * v17.1 (本地/遠端登入狀態分離): 增加對 `window.location.hostname` 的判斷，確保本地測試時始終為一般使用者狀態。
- * v17.0 (互動式遮罩繪製): 新增了互動式遮罩繪製功能。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1252,8 +1252,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function subscribeToPush() {
         try {
+            // [v17.4 修正] 使用正確的端點並驗證回應
             const response = await fetchWithUserContext('/api/comfyui/vapid_public_key');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `無法獲取 VAPID 公鑰: ${response.statusText}`);
+            }
             const data = await response.json();
+            if (!data || !data.public_key) {
+                throw new Error("後端返回的 VAPID 公鑰格式不正確。");
+            }
+
             const applicationServerKey = urlBase64ToUint8Array(data.public_key);
             const subscription = await serviceWorkerRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
             await fetchWithUserContext('/api/comfyui/save_subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription) });
@@ -1410,9 +1419,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        const ADETAILER_DENOISE = 0.4;
-        const adetailerStepsPerImage = Math.floor(mainSteps * ADETAILER_DENOISE);
         
+        // [v17.3 修正] 修正總步數計算
+        // ADetailer (FaceDetailer) 節點在後端工作流中也被設定為使用 mainSteps。
+        // 因此，總步數應該是主 KSampler 的步數與 ADetailer 節點步數的總和。
+        const adetailerStepsPerImage = mainSteps;
         totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerStepsPerImage * batchSize) : 0);
 
         try {
@@ -1467,7 +1478,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'progress':
                     const data = message.data;
                     
-                    if (isNewNodeProgress && data.current_step === 1) {
+                    // [v17.3 修正] 改善多節點進度更新邏輯
+                    // 原先的 data.current_step === 1 判斷在 denoise < 1.0 的情況下會失效。
+                    // 新邏輯在每次 isNewNodeProgress 為 true 時（即一個新節點開始時）更新累計步數。
+                    if (isNewNodeProgress) {
                         accumulatedSteps += currentNodeTotalSteps;
                         currentNodeTotalSteps = data.total_steps;
                         isNewNodeProgress = false;
@@ -1477,6 +1491,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         isNewNodeProgress = true;
                     }
 
+                    // 注意：此處的 currentTotalProgress 對於 denoise < 1.0 的情況，進度條會跳躍，
+                    // 但最終能正確達到 100%。這是因為前端無法得知後端節點的 denoise 值。
+                    // 這是可接受的權衡，主要解決了進度條算不完的問題。
                     const currentTotalProgress = accumulatedSteps + data.current_step;
                     const percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
 
@@ -1808,7 +1825,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.2');
+        console.log('應用程式已初始化 v17.4');
         
         if ('serviceWorker' in navigator) {
             try {
