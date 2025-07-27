@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.5 (通知修正): 修正了 `initialize` 函式中 Service Worker 的註冊路徑，從錯誤的 `/static/js/sw.js` 改為正確的根路徑 `/sw.js`，並明確指定 scope 為 `'/'`。此修正解決了因 404 錯誤導致 Service Worker 註冊失敗的問題，從而恢復了 Web Push 通知功能。
  * v17.4 (通知修正): 修正了 `subscribeToPush` 函式，使其能正確從新增的後端端點 `/api/comfyui/vapid_public_key` 獲取公鑰。增加了對 fetch 回應的驗證，確保在收到有效的公鑰後才繼續執行訂閱邏輯，從而解決了 `TypeError` 和 `405` 錯誤。
  * v17.3 (進度條修正): 1. 修正了 `handleGenerateClick` 中 `totalExpectedSteps` 的計算邏輯，使其在啟用 ADetailer 時能正確加總主生成與臉部修復的步數。 2. 改善了 `connectStatusWebSocket` 中的進度更新邏輯，使其能更穩定地處理來自多個 KSampler 節點（如主生成+臉部修復）的進度訊息，確保進度條能正確達到 100%。
- * v17.2 (功能恢復與整合): 恢復並整合了 v17.0 版本中實現的互動式遮罩繪製功能，並將其與 v17.1 版本中的本地/遠端登入狀態分離邏輯合併，確保所有功能完整。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1825,11 +1825,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.4');
+        console.log('應用程式已初始化 v17.5');
         
         if ('serviceWorker' in navigator) {
             try {
-                serviceWorkerRegistration = await navigator.serviceWorker.register('/static/js/sw.js');
+                // [v17.5 修正] 將 Service Worker 的註冊路徑修正為根目錄，並明確指定 scope
+                serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }
