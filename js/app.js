@@ -1,7 +1,7 @@
 // static/js/app.js
 
 /**
- * v17.5 (通知修正): 修正了 `initialize` 函式中 Service Worker 的註冊路徑，從錯誤的 `/static/js/sw.js` 改為正確的根路徑 `/sw.js`，並明確指定 scope 為 `'/'`。此修正解決了因 404 錯誤導致 Service Worker 註冊失敗的問題，從而恢復了 Web Push 通知功能。
+ * v17.5 (通知修正): 修正了 `initialize` 函式中 Service Worker 的註冊路徑，從錯誤的 `/sw.js` 改為相對路徑 `sw.js`。此修正解決了在 GitHub Pages 等子目錄環境下因 404 錯誤導致 Service Worker 註冊失敗的問題，從而恢復了 Web Push 通知功能。
  * v17.4 (通知修正): 修正了 `subscribeToPush` 函式，使其能正確從新增的後端端點 `/api/comfyui/vapid_public_key` 獲取公鑰。增加了對 fetch 回應的驗證，確保在收到有效的公鑰後才繼續執行訂閱邏輯，從而解決了 `TypeError` 和 `405` 錯誤。
  * v17.3 (進度條修正): 1. 修正了 `handleGenerateClick` 中 `totalExpectedSteps` 的計算邏輯，使其在啟用 ADetailer 時能正確加總主生成與臉部修復的步數。 2. 改善了 `connectStatusWebSocket` 中的進度更新邏輯，使其能更穩定地處理來自多個 KSampler 節點（如主生成+臉部修復）的進度訊息，確保進度條能正確達到 100%。
  */
@@ -1829,8 +1829,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if ('serviceWorker' in navigator) {
             try {
-                // [v17.5 修正] 將 Service Worker 的註冊路徑修正為根目錄，並明確指定 scope
-                serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+                // [v17.5 修正] 將 Service Worker 的註冊路徑修正為相對路徑，以適應本地和遠端部署
+                serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }

@@ -39,19 +39,26 @@ self.addEventListener('notificationclick', event => {
     // 關閉通知
     event.notification.close();
 
+    // [v1.1 修正] 將目標 URL 從固定的 '/' 改為使用 Service Worker 的 scope，以適應子目錄部署
+    const targetUrl = self.registration.scope;
+
     // 聚焦到已開啟的應用程式視窗，如果沒有則開啟一個新的
     event.waitUntil(
         clients.matchAll({
-            type: "window"
+            type: "window",
+            includeUncontrolled: true // 確保能找到所有相關的客戶端
         }).then(clientList => {
+            // 尋找是否已有匹配 scope 的視窗開啟
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
-                if (client.url == '/' && 'focus' in client) {
+                // 檢查 URL 是否與 scope 匹配
+                if (client.url === targetUrl && 'focus' in client) {
                     return client.focus();
                 }
             }
+            // 如果沒有找到已開啟的視窗，則開啟一個新的
             if (clients.openWindow) {
-                return clients.openWindow('/');
+                return clients.openWindow(targetUrl);
             }
         })
     );
