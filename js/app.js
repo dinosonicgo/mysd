@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
- * v17.1 (本地/遠端登入狀態分離): 根據使用者需求，在初始化時增加對 `window.location.hostname` 的判斷。當使用者通過 `127.0.0.1` 或 `localhost` 訪問時，將強制設為一般使用者狀態並清除 GM 登入記錄，確保本地測試的純淨性。而在通過其他域名（如 Cloudflare）訪問時，則會保留並記住 GM 的登入狀態。
+ * v17.2 (功能恢復與整合): 恢復並整合了 v17.0 版本中實現的互動式遮罩繪製功能，並將其與 v17.1 版本中的本地/遠端登入狀態分離邏輯合併，確保所有功能完整。
+ * v17.1 (本地/遠端登入狀態分離): 增加對 `window.location.hostname` 的判斷，確保本地測試時始終為一般使用者狀態。
  * v17.0 (互動式遮罩繪製): 新增了互動式遮罩繪製功能。
- * v16.1 (總進度條精確化): 重寫了總進度條的估算邏輯，提供更貼近實際執行時間的總體進度估算。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -312,13 +312,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
         }
 
-        // [v17.1 修正] 檢查是否為本地訪問
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
         if (isLocal) {
             console.log("偵測到本地訪問，強制設為一般使用者模式。");
             userContext.user_type = 'local';
-            localStorage.removeItem('user_type'); // 清除任何可能存在的 GM 狀態
+            localStorage.removeItem('user_type');
             localStorage.removeItem('gm_last_device');
         } else {
             userContext.user_type = localStorage.getItem('user_type') || 'local';
@@ -1809,7 +1808,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.1');
+        console.log('應用程式已初始化 v17.2');
         
         if ('serviceWorker' in navigator) {
             try {

@@ -119,7 +119,7 @@
             margin-left: 8px;
         }
         
-        /* [v17.0] 繪圖遮罩 Modal 樣式 */
+        /* 繪圖遮罩 Modal 樣式 */
         #inpaint-canvas-modal .modal-dialog { max-width: 90vw; }
         #inpaint-canvas-container { position: relative; width: fit-content; margin: auto; }
         #inpaint-canvas { cursor: crosshair; touch-action: none; }
@@ -389,7 +389,6 @@
                                     </div>
                                     <hr>
                                     <h5><i class="bi bi-brush-fill"></i> 局部修圖遮罩 (Inpaint Mask)</h5>
-                                    <!-- [v17.0] 新增繪製遮罩按鈕 -->
                                     <div class="d-grid gap-2 mb-2">
                                         <button class="btn btn-outline-primary" id="draw-mask-btn" style="display: none;">
                                             <i class="bi bi-pencil-fill"></i> 在圖片上繪製遮罩
@@ -585,7 +584,7 @@
         </div>
     </main>
 
-    <!-- [v17.0] 新增繪圖遮罩 Modal -->
+    <!-- 繪圖遮罩 Modal -->
     <div class="modal fade" id="inpaint-canvas-modal" tabindex="-1" aria-labelledby="inpaintCanvasModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-fullscreen-lg-down modal-xl">
             <div class="modal-content">
@@ -967,6 +966,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1753608963"></script>
+    <script src="js/app.js?v=1753620012"></script>
 </body>
 </html>
