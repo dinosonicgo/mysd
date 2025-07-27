@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
- * v16.0 (估算總進度條): 實現了估算總進度條功能。現在進度條不再因不同節點（如主 KSampler 和 FaceDetailer 的 KSampler）的執行而重置。腳本會根據批量大小和是否啟用臉部修復來預估一個總步數，並在收到進度回調時累加，提供一個從 0% 連續推進到 ~100% 的、更符合直覺的總體進度反饋。
- * v15.1 (致命錯誤修正): 將 comfyHistoryGrid 的宣告從 const 改為 let。解決了因在 initializeHistory 函式中重新賦值給常量，導致 TypeError 中斷整個 JS 初始化流程的問題，恢復了頁面所有按鈕的交互功能。
- * v15.0 (多裝置架構 v2): 完整的前端多裝置控制實現。
+ * v17.0 (互動式遮罩繪製): 新增了互動式遮罩繪製功能。使用者現在可以在上傳以圖生圖的來源圖片後，點擊「繪製遮罩」按鈕，在彈出的繪圖視窗中直接用滑鼠或手指塗抹需要重繪的區域。完成後，程式會自動將繪製的軌跡轉換為符合 ComfyUI 要求的黑白遮罩圖片並上傳。
+ * v16.1 (總進度條精確化): 重寫了總進度條的估算邏輯，提供更貼近實際執行時間的總體進度估算。
+ * v16.0 (估算總進度條): 實現了估算總進度條功能。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -77,6 +77,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const maskPreview = getById('mask-preview');
     const maskFilename = getById('mask-filename');
     const maskClearBtn = getById('mask-clear-btn');
+
+    // --- [v17.0] 元素選擇器 (ComfyUI - 繪圖遮罩) ---
+    const drawMaskBtn = getById('draw-mask-btn');
+    const inpaintCanvasModalEl = getById('inpaint-canvas-modal');
+    let bsInpaintCanvasModal = null;
+    const inpaintCanvas = getById('inpaint-canvas');
+    const inpaintBrushSizeSlider = getById('inpaint-brush-size');
+    const inpaintBrushSizeLabel = getById('inpaint-brush-size-label');
+    const inpaintClearCanvasBtn = getById('inpaint-clear-canvas-btn');
+    const inpaintSaveMaskBtn = getById('inpaint-save-mask-btn');
+    let inpaintCtx = null;
 
     // --- 元素選擇器 (ComfyUI - ControlNet) ---
     const controlnetTab = getById('controlnet-tab');
@@ -205,9 +216,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 狀態變數 ---
     let userContext = { user_type: 'local', device_id: 'local' };
-    let activeDeviceUrl = window.location.origin; // 本地模式預設為當前網域
+    let activeDeviceUrl = window.location.origin;
     let sharedConfig = { devices: {} };
-    let img2imgState = { source_image: null, inpaint_mask: null };
+    let img2imgState = { source_image: null, inpaint_mask: null, source_image_data: null };
     let controlnetState = { controlnet_image: null };
     let videoState = { source_image: null };
     let currentHistoryList = [];
@@ -225,7 +236,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const GM_PASSWORD = "781111";
     const GITHUB_CONFIG_URL = 'https://dinosonicgo.github.io/mysd/config.json';
 
-    // [v16.0 修正] 新增總進度條相關狀態變數
+    // [v17.0] 繪圖遮罩狀態變數
+    let isDrawing = false;
+    let brushSize = 20;
+    let lastX = 0;
+    let lastY = 0;
+
+    // 總進度條相關狀態變數
     let totalExpectedSteps = 0;
     let accumulatedSteps = 0;
     let currentNodeTotalSteps = 0;
@@ -701,7 +718,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (filename) {
             stateObject[stateKey] = filename;
             const reader = new FileReader();
-            reader.onload = (e) => { if(previewElement) previewElement.src = e.target.result; };
+            reader.onload = (e) => { 
+                if(previewElement) previewElement.src = e.target.result; 
+                if (stateKey === 'source_image') {
+                    img2imgState.source_image_data = e.target.result;
+                    if(drawMaskBtn) drawMaskBtn.style.display = 'block';
+                }
+            };
             reader.readAsDataURL(file);
             
             if(uploadArea) uploadArea.style.display = 'none';
@@ -716,6 +739,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetFileUploadUI(stateObject, stateKey, uploadArea, previewContainer, previewElement, filenameElement, tabElement, uploadText, subText) {
         stateObject[stateKey] = null;
+        if (stateKey === 'source_image') {
+            img2imgState.source_image_data = null;
+            if(drawMaskBtn) drawMaskBtn.style.display = 'none';
+        }
         const inputElement = uploadArea.previousElementSibling;
         if(inputElement && inputElement.type === 'file') inputElement.value = '';
 
@@ -760,7 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
-            const checkpoints = await checkpointsResponse.json();
+            const checkpoints = await response.json();
             
             if (modelSelectionGrid) {
                 modelSelectionGrid.innerHTML = '';
@@ -1287,7 +1314,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (comfyProgressContainer) comfyProgressContainer.style.display = 'none';
         if (positivePromptWarning) positivePromptWarning.style.display = 'none';
         
-        // [v16.0 修正] 初始化總進度條狀態
         accumulatedSteps = 0;
         currentNodeTotalSteps = 0;
         isNewNodeProgress = true;
@@ -1373,11 +1399,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // [v16.0 修正] 計算總預期步數
+        // [v16.1 修正] 使用更精確的公式計算總預期步數
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        const adetailerSteps = Math.floor(mainSteps * 0.4); // ADetailer 的 denoise 是 0.4
-        totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerSteps * batchSize) : 0);
+        const ADETAILER_DENOISE = 0.4; // FaceDetailer 中固定的 denoise 值
+        const adetailerStepsPerImage = Math.floor(mainSteps * ADETAILER_DENOISE);
+        
+        totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerStepsPerImage * batchSize) : 0);
 
         try {
             const response = await fetchWithUserContext('/api/comfyui/generate', {
@@ -1431,12 +1459,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'progress':
                     const data = message.data;
                     
-                    // [v16.0 修正] 總進度條邏輯
-                    if (isNewNodeProgress) {
+                    // [v16.1 修正] 總進度條邏輯
+                    if (isNewNodeProgress && data.current_step === 1) {
                         accumulatedSteps += currentNodeTotalSteps;
                         currentNodeTotalSteps = data.total_steps;
                         isNewNodeProgress = false;
                     }
+                    
                     if (data.current_step === data.total_steps) {
                         isNewNodeProgress = true;
                     }
@@ -1451,7 +1480,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         comfyProgressBar.setAttribute('aria-valuenow', percent);
                     }
                     if(comfyProgressText) {
-                        comfyProgressText.textContent = `總進度: ${currentTotalProgress} / ${totalExpectedSteps} (估算)`;
+                        comfyProgressText.textContent = `總進度 (估算): ${Math.min(percent, 100).toFixed(0)}%`;
                     }
                     break;
                 case 'item_generated':
@@ -1679,8 +1708,100 @@ document.addEventListener('DOMContentLoaded', () => {
         if (historyBatchDeleteBtn) historyBatchDeleteBtn.disabled = count === 0;
     }
 
+    // [v17.0] 繪圖遮罩相關函式
+    function initializeInpaintCanvas(imageSrc) {
+        const img = new Image();
+        img.onload = () => {
+            const maxWidth = window.innerWidth * 0.8;
+            const maxHeight = window.innerHeight * 0.7;
+            let { width, height } = img;
+
+            if (width > maxWidth) {
+                height *= maxWidth / width;
+                width = maxWidth;
+            }
+            if (height > maxHeight) {
+                width *= maxHeight / height;
+                height = maxHeight;
+            }
+
+            inpaintCanvas.width = width;
+            inpaintCanvas.height = height;
+            inpaintCtx.drawImage(img, 0, 0, width, height);
+        };
+        img.src = imageSrc;
+    }
+
+    function getMousePos(canvas, evt) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
+    
+    function getTouchPos(canvas, touch) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: touch.clientX - rect.left,
+            y: touch.clientY - rect.top
+        };
+    }
+
+    function drawOnCanvas(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        
+        let currentPos;
+        if (e.touches && e.touches[0]) {
+            currentPos = getTouchPos(inpaintCanvas, e.touches[0]);
+        } else {
+            currentPos = getMousePos(inpaintCanvas, e);
+        }
+
+        inpaintCtx.beginPath();
+        inpaintCtx.moveTo(lastX, lastY);
+        inpaintCtx.lineTo(currentPos.x, currentPos.y);
+        inpaintCtx.stroke();
+        [lastX, lastY] = [currentPos.x, currentPos.y];
+    }
+
+    async function generateMaskAndUpload() {
+        const originalImage = new Image();
+        originalImage.onload = async () => {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = originalImage.width;
+            tempCanvas.height = originalImage.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCtx.fillStyle = 'black';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            tempCtx.drawImage(inpaintCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i+3] > 0) { // If pixel is not transparent
+                    data[i] = 255;   // R
+                    data[i+1] = 255; // G
+                    data[i+2] = 255; // B
+                }
+            }
+            tempCtx.putImageData(imageData, 0, 0);
+            
+            tempCanvas.toBlob(async (blob) => {
+                const maskFile = new File([blob], "drawn_mask.png", { type: "image/png" });
+                await handleFileUpload(maskFile, img2imgState, maskPreview, maskUploadArea, maskPreviewContainer, maskFilename, null, 'inpaint_mask');
+                if (bsInpaintCanvasModal) bsInpaintCanvasModal.hide();
+            }, 'image/png');
+        };
+        originalImage.src = img2imgState.source_image_data;
+    }
+
+
     async function initialize() {
-        console.log('應用程式已初始化 v16.0');
+        console.log('應用程式已初始化 v17.0');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -1705,6 +1826,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
         if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
+        if (inpaintCanvasModalEl) bsInpaintCanvasModal = new bootstrap.Modal(inpaintCanvasModalEl);
         const gmLoginModalEl = getById('gm-login-modal');
         if (gmLoginModalEl) bsGmLoginModal = new bootstrap.Modal(gmLoginModalEl);
 
@@ -1961,6 +2083,76 @@ document.addEventListener('DOMContentLoaded', () => {
         modelFilterCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', filterModels);
         });
+
+        // [v17.0] 繪圖遮罩事件監聽
+        if (drawMaskBtn) {
+            drawMaskBtn.addEventListener('click', () => {
+                if (img2imgState.source_image_data && bsInpaintCanvasModal) {
+                    bsInpaintCanvasModal.show();
+                } else {
+                    alert('請先上傳一張以圖生圖的來源圖片。');
+                }
+            });
+        }
+
+        if (inpaintCanvasModalEl) {
+            inpaintCanvasModalEl.addEventListener('shown.bs.modal', () => {
+                if (img2imgState.source_image_data) {
+                    initializeInpaintCanvas(img2imgState.source_image_data);
+                }
+            });
+        }
+
+        if (inpaintCanvas) {
+            inpaintCtx = inpaintCanvas.getContext('2d');
+            inpaintCtx.strokeStyle = 'rgba(255, 0, 0, 0.7)';
+            inpaintCtx.lineJoin = 'round';
+            inpaintCtx.lineCap = 'round';
+
+            const startDrawing = (e) => {
+                isDrawing = true;
+                let pos;
+                if (e.touches && e.touches[0]) {
+                    pos = getTouchPos(inpaintCanvas, e.touches[0]);
+                } else {
+                    pos = getMousePos(inpaintCanvas, e);
+                }
+                [lastX, lastY] = [pos.x, pos.y];
+            };
+            const stopDrawing = () => isDrawing = false;
+
+            inpaintCanvas.addEventListener('mousedown', startDrawing);
+            inpaintCanvas.addEventListener('mousemove', drawOnCanvas);
+            inpaintCanvas.addEventListener('mouseup', stopDrawing);
+            inpaintCanvas.addEventListener('mouseleave', stopDrawing);
+            inpaintCanvas.addEventListener('touchstart', startDrawing, { passive: false });
+            inpaintCanvas.addEventListener('touchmove', drawOnCanvas, { passive: false });
+            inpaintCanvas.addEventListener('touchend', stopDrawing);
+        }
+
+        if (inpaintBrushSizeSlider) {
+            inpaintBrushSizeSlider.addEventListener('input', (e) => {
+                brushSize = e.target.value;
+                if (inpaintBrushSizeLabel) inpaintBrushSizeLabel.textContent = brushSize;
+                if (inpaintCtx) inpaintCtx.lineWidth = brushSize;
+            });
+            brushSize = inpaintBrushSizeSlider.value;
+            if (inpaintBrushSizeLabel) inpaintBrushSizeLabel.textContent = brushSize;
+            if (inpaintCtx) inpaintCtx.lineWidth = brushSize;
+        }
+
+        if (inpaintClearCanvasBtn) {
+            inpaintClearCanvasBtn.addEventListener('click', () => {
+                if (inpaintCtx) {
+                    inpaintCtx.clearRect(0, 0, inpaintCanvas.width, inpaintCanvas.height);
+                    initializeInpaintCanvas(img2imgState.source_image_data);
+                }
+            });
+        }
+
+        if (inpaintSaveMaskBtn) {
+            inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
+        }
     }
     
     initialize();
