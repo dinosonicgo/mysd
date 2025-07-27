@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
- * v17.0 (互動式遮罩繪製): 新增了互動式遮罩繪製功能。使用者現在可以在上傳以圖生圖的來源圖片後，點擊「繪製遮罩」按鈕，在彈出的繪圖視窗中直接用滑鼠或手指塗抹需要重繪的區域。完成後，程式會自動將繪製的軌跡轉換為符合 ComfyUI 要求的黑白遮罩圖片並上傳。
+ * v17.1 (本地/遠端登入狀態分離): 根據使用者需求，在初始化時增加對 `window.location.hostname` 的判斷。當使用者通過 `127.0.0.1` 或 `localhost` 訪問時，將強制設為一般使用者狀態並清除 GM 登入記錄，確保本地測試的純淨性。而在通過其他域名（如 Cloudflare）訪問時，則會保留並記住 GM 的登入狀態。
+ * v17.0 (互動式遮罩繪製): 新增了互動式遮罩繪製功能。
  * v16.1 (總進度條精確化): 重寫了總進度條的估算邏輯，提供更貼近實際執行時間的總體進度估算。
- * v16.0 (估算總進度條): 實現了估算總進度條功能。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const maskFilename = getById('mask-filename');
     const maskClearBtn = getById('mask-clear-btn');
 
-    // --- [v17.0] 元素選擇器 (ComfyUI - 繪圖遮罩) ---
+    // --- 元素選擇器 (ComfyUI - 繪圖遮罩) ---
     const drawMaskBtn = getById('draw-mask-btn');
     const inpaintCanvasModalEl = getById('inpaint-canvas-modal');
     let bsInpaintCanvasModal = null;
@@ -236,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const GM_PASSWORD = "781111";
     const GITHUB_CONFIG_URL = 'https://dinosonicgo.github.io/mysd/config.json';
 
-    // [v17.0] 繪圖遮罩狀態變數
+    // 繪圖遮罩狀態變數
     let isDrawing = false;
     let brushSize = 20;
     let lastX = 0;
@@ -312,7 +312,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
         }
 
-        userContext.user_type = localStorage.getItem('user_type') || 'local';
+        // [v17.1 修正] 檢查是否為本地訪問
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+        if (isLocal) {
+            console.log("偵測到本地訪問，強制設為一般使用者模式。");
+            userContext.user_type = 'local';
+            localStorage.removeItem('user_type'); // 清除任何可能存在的 GM 狀態
+            localStorage.removeItem('gm_last_device');
+        } else {
+            userContext.user_type = localStorage.getItem('user_type') || 'local';
+        }
         
         if (userContext.user_type === 'gm') {
             const lastDevice = localStorage.getItem('gm_last_device');
@@ -787,7 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
-            const checkpoints = await response.json();
+            const checkpoints = await checkpointsResponse.json();
             
             if (modelSelectionGrid) {
                 modelSelectionGrid.innerHTML = '';
@@ -1399,10 +1409,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // [v16.1 修正] 使用更精確的公式計算總預期步數
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        const ADETAILER_DENOISE = 0.4; // FaceDetailer 中固定的 denoise 值
+        const ADETAILER_DENOISE = 0.4;
         const adetailerStepsPerImage = Math.floor(mainSteps * ADETAILER_DENOISE);
         
         totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerStepsPerImage * batchSize) : 0);
@@ -1459,7 +1468,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'progress':
                     const data = message.data;
                     
-                    // [v16.1 修正] 總進度條邏輯
                     if (isNewNodeProgress && data.current_step === 1) {
                         accumulatedSteps += currentNodeTotalSteps;
                         currentNodeTotalSteps = data.total_steps;
@@ -1708,7 +1716,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (historyBatchDeleteBtn) historyBatchDeleteBtn.disabled = count === 0;
     }
 
-    // [v17.0] 繪圖遮罩相關函式
+    // 繪圖遮罩相關函式
     function initializeInpaintCanvas(imageSrc) {
         const img = new Image();
         img.onload = () => {
@@ -1782,10 +1790,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                if (data[i+3] > 0) { // If pixel is not transparent
-                    data[i] = 255;   // R
-                    data[i+1] = 255; // G
-                    data[i+2] = 255; // B
+                if (data[i+3] > 0) {
+                    data[i] = 255;
+                    data[i+1] = 255;
+                    data[i+2] = 255;
                 }
             }
             tempCtx.putImageData(imageData, 0, 0);
@@ -1801,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.0');
+        console.log('應用程式已初始化 v17.1');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -2084,7 +2092,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkbox.addEventListener('change', filterModels);
         });
 
-        // [v17.0] 繪圖遮罩事件監聽
+        // 繪圖遮罩事件監聽
         if (drawMaskBtn) {
             drawMaskBtn.addEventListener('click', () => {
                 if (img2imgState.source_image_data && bsInpaintCanvasModal) {
