@@ -1,10 +1,10 @@
 // static/js/app.js
 
 /**
+ * v17.11 (排隊系統支援): 為了配合後端的中央任務排程器，重構了 `handleGenerateClick` 函式。現在，它能夠正確處理後端返回的 `queued` 狀態。當任務被排入佇列時，前端會向使用者顯示明確的排隊提示訊息，並保持生成按鈕禁用，直到輪詢機制 `pollQueueStatus` 檢測到任務開始執行，從而實現了無縫的非同步任務排隊體驗。
  * v17.10 (下載進度回報): 徹底重構了模型下載功能。現在，點擊下載會從後端獲取一個 `task_id`，並立即建立一個專用的 WebSocket 連線來接收即時進度。在下載 Modal 中新增了動態進度條和百分比顯示，並在下載完成時顯示明確的成功訊息，極大地改善了長時間下載的使用者體驗。
  * v17.9 (Scope 修正): 修正了模型下載功能因 `fetchWithUserContext is not defined` 錯誤而失敗的問題。將 `handleDownloadSubmit` 函式移至 `DOMContentLoaded` 事件監聽器內部，使其能夠正確存取在其作用域中定義的 `fetchWithUserContext` 函式，恢復了下載功能。
  * v17.8 (遮罩筆刷修正): 根據需求，將局部修圖 (Inpaint) 的遮罩筆刷從預設的線條改為「紅色、70%透明度、正圓形畫筆」。重構了 `drawOnCanvas` 和 `startDrawing` 函式，使用 `arc` 和 `fill` 來繪製填充圓形，並透過插值確保快速拖曳時筆觸的平滑與連續性。
- * v17.7 (下載修正): 修正了歷史紀錄燈箱中的下載按鈕行為。原先直接連結可能會導致瀏覽器在新分頁開啟檔案而非下載。新邏輯會攔截點擊事件，使用 fetch 將檔案資料讀取為 Blob，然後動態建立一個連結來強制觸發瀏覽器的下載功能，確保所有檔案類型都能被正確下載。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -254,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
-    const DEFAULT_FIXED_PROMPT = "非常精緻美麗的臉，非常精緻美麗的眼睛，超非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
+    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
 
     // --- 核心函式: API 請求與使用者上下文 ---
     async function fetchWithUserContext(path, options = {}) {
@@ -1343,6 +1343,7 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
+    // [v17.11 修正] 重構以處理排隊狀態
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1423,10 +1424,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        
-        // [v17.3 修正] 修正總步數計算
-        // ADetailer (FaceDetailer) 節點在後端工作流中也被設定為使用 mainSteps。
-        // 因此，總步數應該是主 KSampler 的步數與 ADetailer 節點步數的總和。
         const adetailerStepsPerImage = mainSteps;
         totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerStepsPerImage * batchSize) : 0);
 
@@ -1446,11 +1443,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(errorMsg);
             }
     
-            const data = await response.json();
-            if (data && data.prompt_id) {
-                setGeneratingState(data.prompt_id);
+            const result = await response.json();
+            if (result && result.prompt_id) {
+                setGeneratingState(result.prompt_id);
+            } else if (result && result.status === 'queued') {
+                if (comfyStatusText) {
+                    comfyStatusText.textContent = `✅ ${result.message}`;
+                    comfyStatusText.classList.add('text-success');
+                }
+                if (comfySpinner) comfySpinner.style.display = 'inline-block'; // 保持 spinner 轉動
+                // 不做任何事，等待 pollQueueStatus 自動捕捉
             } else {
-                throw new Error('後端成功響應，但未返回有效的 prompt_id。');
+                throw new Error('後端響應格式不正確。');
             }
     
         } catch (error) {
@@ -1482,9 +1486,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'progress':
                     const data = message.data;
                     
-                    // [v17.3 修正] 改善多節點進度更新邏輯
-                    // 原先的 data.current_step === 1 判斷在 denoise < 1.0 的情況下會失效。
-                    // 新邏輯在每次 isNewNodeProgress 為 true 時（即一個新節點開始時）更新累計步數。
                     if (isNewNodeProgress) {
                         accumulatedSteps += currentNodeTotalSteps;
                         currentNodeTotalSteps = data.total_steps;
@@ -1495,9 +1496,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         isNewNodeProgress = true;
                     }
 
-                    // 注意：此處的 currentTotalProgress 對於 denoise < 1.0 的情況，進度條會跳躍，
-                    // 但最終能正確達到 100%。這是因為前端無法得知後端節點的 denoise 值。
-                    // 這是可接受的權衡，主要解決了進度條算不完的問題。
                     const currentTotalProgress = accumulatedSteps + data.current_step;
                     const percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
 
@@ -1966,7 +1964,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.10');
+        console.log('應用程式已初始化 v17.11');
         
         if ('serviceWorker' in navigator) {
             try {
