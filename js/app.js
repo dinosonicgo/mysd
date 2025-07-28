@@ -1,9 +1,10 @@
 // static/js/app.js
 
 /**
+ * v17.9 (Scope 修正): 修正了模型下載功能因 `fetchWithUserContext is not defined` 錯誤而失敗的問題。將 `handleDownloadSubmit` 函式移至 `DOMContentLoaded` 事件監聽器內部，使其能夠正確存取在其作用域中定義的 `fetchWithUserContext` 函式，恢復了下載功能。
+ * v17.8 (遮罩筆刷修正): 根據需求，將局部修圖 (Inpaint) 的遮罩筆刷從預設的線條改為「紅色、70%透明度、正圓形畫筆」。重構了 `drawOnCanvas` 和 `startDrawing` 函式，使用 `arc` 和 `fill` 來繪製填充圓形，並透過插值確保快速拖曳時筆觸的平滑與連續性。
  * v17.7 (下載修正): 修正了歷史紀錄燈箱中的下載按鈕行為。原先直接連結可能會導致瀏覽器在新分頁開啟檔案而非下載。新邏輯會攔截點擊事件，使用 fetch 將檔案資料讀取為 Blob，然後動態建立一個連結來強制觸發瀏覽器的下載功能，確保所有檔案類型都能被正確下載。
  * v17.6 (自動刷新模型列表): 增強了模型選擇的使用者體驗。現在，每次使用者點擊「選擇 Checkpoint 模型」或「新增/管理 LoRA」按鈕時，前端會自動向後端重新請求最新的模型列表並更新彈出視窗中的內容。這確保了模型列表始終是最新的，無需手動重新整理頁面。
- * v17.5 (通知修正): 修正了 `initialize` 函式中 Service Worker 的註冊路徑，從錯誤的 `/static/js/sw.js` 改為相對路徑 `sw.js`。此修正解決了在 GitHub Pages 等子目錄環境下因 404 錯誤導致 Service Worker 註冊失敗的問題，從而恢復了 Web Push 通知功能。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1772,6 +1773,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // [v17.8 修正] 重構繪圖邏輯以使用圓形筆刷
     function drawOnCanvas(e) {
         if (!isDrawing) return;
         e.preventDefault();
@@ -1783,10 +1785,19 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPos = getMousePos(inpaintCanvas, e);
         }
 
-        inpaintCtx.beginPath();
-        inpaintCtx.moveTo(lastX, lastY);
-        inpaintCtx.lineTo(currentPos.x, currentPos.y);
-        inpaintCtx.stroke();
+        // 計算兩點之間的距離和角度
+        const dist = Math.sqrt(Math.pow(currentPos.x - lastX, 2) + Math.pow(currentPos.y - lastY, 2));
+        const angle = Math.atan2(currentPos.y - lastY, currentPos.x - lastX);
+
+        // 在兩點之間進行插值，以繪製連續的圓形
+        for (let i = 0; i < dist; i += 2) { // 每 2 個像素插值一次
+            const x = lastX + (Math.cos(angle) * i);
+            const y = lastY + (Math.sin(angle) * i);
+            inpaintCtx.beginPath();
+            inpaintCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+            inpaintCtx.fill();
+        }
+
         [lastX, lastY] = [currentPos.x, currentPos.y];
     }
 
@@ -1806,10 +1817,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                if (data[i+3] > 0) {
-                    data[i] = 255;
-                    data[i+1] = 255;
-                    data[i+2] = 255;
+                if (data[i+3] > 0) { // 檢查 Alpha 通道
+                    data[i] = 255;     // R
+                    data[i+1] = 255;   // G
+                    data[i+2] = 255;   // B
                 }
             }
             tempCtx.putImageData(imageData, 0, 0);
@@ -1822,10 +1833,76 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         originalImage.src = img2imgState.source_image_data;
     }
+    
+    // [v17.9 修正] 將 handleDownloadSubmit 移入此處
+    async function handleDownloadSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const submitBtn = form.querySelector('#download-model-submit-btn');
+        const spinner = form.querySelector('#download-model-spinner');
+        const statusDiv = form.querySelector('#download-status');
 
+        if (!submitBtn || !spinner || !statusDiv) return;
+
+        submitBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+        statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載任務...</div>';
+
+        const modelType = form.querySelector('#download-model-type').value;
+        const modelUrl = form.querySelector('#download-model-url').value;
+        const modelName = form.querySelector('#download-model-name').value;
+        const previewFile = form.querySelector('#download-model-preview').files[0];
+
+        let previewImageBase64 = null;
+
+        if (previewFile) {
+            try {
+                previewImageBase64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = (error) => reject(error);
+                    reader.readAsDataURL(previewFile);
+                });
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">讀取預覽圖失敗: ${error.message}</div>`;
+                submitBtn.disabled = false;
+                spinner.style.display = 'none';
+                return;
+            }
+        }
+
+        const payload = {
+            model_type: modelType,
+            model_url: modelUrl,
+            model_name: modelName,
+            preview_image_base64: previewImageBase64
+        };
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/download_model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                form.reset();
+            } else {
+                throw new Error(result.detail || '提交失敗');
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
+        } finally {
+            submitBtn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.7');
+        console.log('應用程式已初始化 v17.9');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -2187,10 +2264,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (inpaintCanvas) {
             inpaintCtx = inpaintCanvas.getContext('2d');
-            inpaintCtx.strokeStyle = 'rgba(255, 0, 0, 0.7)';
-            inpaintCtx.lineJoin = 'round';
-            inpaintCtx.lineCap = 'round';
+            // [v17.8 修正] 設定畫筆樣式為半透明紅色填充
+            inpaintCtx.fillStyle = 'rgba(255, 0, 0, 0.7)';
 
+            // [v17.8 修正] 重構開始繪圖的邏輯
             const startDrawing = (e) => {
                 isDrawing = true;
                 let pos;
@@ -2200,6 +2277,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     pos = getMousePos(inpaintCanvas, e);
                 }
                 [lastX, lastY] = [pos.x, pos.y];
+
+                // 立即繪製一個點
+                inpaintCtx.beginPath();
+                inpaintCtx.arc(lastX, lastY, brushSize / 2, 0, Math.PI * 2);
+                inpaintCtx.fill();
             };
             const stopDrawing = () => isDrawing = false;
 
@@ -2216,11 +2298,9 @@ document.addEventListener('DOMContentLoaded', () => {
             inpaintBrushSizeSlider.addEventListener('input', (e) => {
                 brushSize = e.target.value;
                 if (inpaintBrushSizeLabel) inpaintBrushSizeLabel.textContent = brushSize;
-                if (inpaintCtx) inpaintCtx.lineWidth = brushSize;
             });
             brushSize = inpaintBrushSizeSlider.value;
             if (inpaintBrushSizeLabel) inpaintBrushSizeLabel.textContent = brushSize;
-            if (inpaintCtx) inpaintCtx.lineWidth = brushSize;
         }
 
         if (inpaintClearCanvasBtn) {
@@ -2239,72 +2319,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     initialize();
 });
-
-async function handleDownloadSubmit(e) {
-    e.preventDefault();
-    const form = e.target;
-    const submitBtn = form.querySelector('#download-model-submit-btn');
-    const spinner = form.querySelector('#download-model-spinner');
-    const statusDiv = form.querySelector('#download-status');
-
-    if (!submitBtn || !spinner || !statusDiv) return;
-
-    submitBtn.disabled = true;
-    spinner.style.display = 'inline-block';
-    statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載任務...</div>';
-
-    const modelType = form.querySelector('#download-model-type').value;
-    const modelUrl = form.querySelector('#download-model-url').value;
-    const modelName = form.querySelector('#download-model-name').value;
-    const previewFile = form.querySelector('#download-model-preview').files[0];
-
-    let previewImageBase64 = null;
-
-    if (previewFile) {
-        try {
-            previewImageBase64 = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = (error) => reject(error);
-                reader.readAsDataURL(previewFile);
-            });
-        } catch (error) {
-            statusDiv.innerHTML = `<div class="alert alert-danger">讀取預覽圖失敗: ${error.message}</div>`;
-            submitBtn.disabled = false;
-            spinner.style.display = 'none';
-            return;
-        }
-    }
-
-    const payload = {
-        model_type: modelType,
-        model_url: modelUrl,
-        model_name: modelName,
-        preview_image_base64: previewImageBase64
-    };
-
-    try {
-        const response = await fetchWithUserContext('/api/comfyui/download_model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-            form.reset();
-        } else {
-            throw new Error(result.detail || '提交失敗');
-        }
-    } catch (error) {
-        statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
-    } finally {
-        submitBtn.disabled = false;
-        spinner.style.display = 'none';
-    }
-}
 
 function filterModels() {
     const modelSelectionGrid = document.getElementById('model-selection-grid');
