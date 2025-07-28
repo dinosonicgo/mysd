@@ -1,10 +1,10 @@
 // static/js/app.js
 
 /**
+ * v17.10 (下載進度回報): 徹底重構了模型下載功能。現在，點擊下載會從後端獲取一個 `task_id`，並立即建立一個專用的 WebSocket 連線來接收即時進度。在下載 Modal 中新增了動態進度條和百分比顯示，並在下載完成時顯示明確的成功訊息，極大地改善了長時間下載的使用者體驗。
  * v17.9 (Scope 修正): 修正了模型下載功能因 `fetchWithUserContext is not defined` 錯誤而失敗的問題。將 `handleDownloadSubmit` 函式移至 `DOMContentLoaded` 事件監聽器內部，使其能夠正確存取在其作用域中定義的 `fetchWithUserContext` 函式，恢復了下載功能。
  * v17.8 (遮罩筆刷修正): 根據需求，將局部修圖 (Inpaint) 的遮罩筆刷從預設的線條改為「紅色、70%透明度、正圓形畫筆」。重構了 `drawOnCanvas` 和 `startDrawing` 函式，使用 `arc` 和 `fill` 來繪製填充圓形，並透過插值確保快速拖曳時筆觸的平滑與連續性。
  * v17.7 (下載修正): 修正了歷史紀錄燈箱中的下載按鈕行為。原先直接連結可能會導致瀏覽器在新分頁開啟檔案而非下載。新邏輯會攔截點擊事件，使用 fetch 將檔案資料讀取為 Blob，然後動態建立一個連結來強制觸發瀏覽器的下載功能，確保所有檔案類型都能被正確下載。
- * v17.6 (自動刷新模型列表): 增強了模型選擇的使用者體驗。現在，每次使用者點擊「選擇 Checkpoint 模型」或「新增/管理 LoRA」按鈕時，前端會自動向後端重新請求最新的模型列表並更新彈出視窗中的內容。這確保了模型列表始終是最新的，無需手動重新整理頁面。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -248,10 +248,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let accumulatedSteps = 0;
     let currentNodeTotalSteps = 0;
     let isNewNodeProgress = true;
+    
+    // [v17.10 新增] 下載 WebSocket 狀態
+    let downloadWs = null;
 
     // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
-    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
+    const DEFAULT_FIXED_PROMPT = "非常精緻美麗的臉，非常精緻美麗的眼睛，超非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
 
     // --- 核心函式: API 請求與使用者上下文 ---
     async function fetchWithUserContext(path, options = {}) {
@@ -1834,7 +1837,68 @@ document.addEventListener('DOMContentLoaded', () => {
         originalImage.src = img2imgState.source_image_data;
     }
     
-    // [v17.9 修正] 將 handleDownloadSubmit 移入此處
+    // [v17.10 新增] 連接到下載進度 WebSocket
+    function connectDownloadWebSocket(taskId, statusDiv) {
+        if (downloadWs && downloadWs.readyState === WebSocket.OPEN) {
+            downloadWs.close();
+        }
+
+        const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
+        const wsHost = new URL(activeDeviceUrl).host;
+        const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/download/status/${taskId}`;
+
+        downloadWs = new WebSocket(wsUrl);
+
+        downloadWs.onopen = () => {
+            console.log(`已連接到下載 WebSocket，監聽任務 ID: ${taskId}`);
+        };
+
+        downloadWs.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            const data = message.data;
+
+            switch (message.type) {
+                case 'progress':
+                    const percent = data.progress;
+                    const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
+                    const totalMB = (data.total / 1024 / 1024).toFixed(2);
+                    statusDiv.innerHTML = `
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar" role="progressbar" style="width: ${percent}%;" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100">${percent}%</div>
+                        </div>
+                        <div class="text-center small mt-1">${downloadedMB} MB / ${totalMB} MB</div>
+                    `;
+                    break;
+                case 'complete':
+                    statusDiv.innerHTML = `<div class="alert alert-success mt-2">${data.message}</div>`;
+                    const submitBtn = document.getElementById('download-model-submit-btn');
+                    if (submitBtn) submitBtn.disabled = false;
+                    const spinner = document.getElementById('download-model-spinner');
+                    if (spinner) spinner.style.display = 'none';
+                    downloadWs.close();
+                    break;
+                case 'error':
+                    statusDiv.innerHTML = `<div class="alert alert-danger mt-2">錯誤: ${data.message}</div>`;
+                    const errorSubmitBtn = document.getElementById('download-model-submit-btn');
+                    if (errorSubmitBtn) errorSubmitBtn.disabled = false;
+                    const errorSpinner = document.getElementById('download-model-spinner');
+                    if (errorSpinner) errorSpinner.style.display = 'none';
+                    downloadWs.close();
+                    break;
+            }
+        };
+
+        downloadWs.onclose = () => {
+            console.log(`下載 WebSocket (任務 ID: ${taskId}) 已關閉。`);
+        };
+
+        downloadWs.onerror = (error) => {
+            console.error(`下載 WebSocket (任務 ID: ${taskId}) 發生錯誤:`, error);
+            statusDiv.innerHTML = `<div class="alert alert-danger mt-2">進度監聽連線失敗。</div>`;
+        };
+    }
+
+    // [v17.9, v17.10 修正] 將 handleDownloadSubmit 移入此處並修改
     async function handleDownloadSubmit(e) {
         e.preventDefault();
         const form = e.target;
@@ -1887,22 +1951,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const result = await response.json();
 
-            if (response.ok) {
-                statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+            if (response.ok && result.task_id) {
+                statusDiv.innerHTML = `<div class="alert alert-info">${result.message}</div>`;
                 form.reset();
+                connectDownloadWebSocket(result.task_id, statusDiv);
             } else {
-                throw new Error(result.detail || '提交失敗');
+                throw new Error(result.detail || '提交失敗，未收到任務 ID。');
             }
         } catch (error) {
             statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
-        } finally {
             submitBtn.disabled = false;
             spinner.style.display = 'none';
         }
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.9');
+        console.log('應用程式已初始化 v17.10');
         
         if ('serviceWorker' in navigator) {
             try {
