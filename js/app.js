@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
- * v17.5 (通知修正): 修正了 `initialize` 函式中 Service Worker 的註冊路徑，從錯誤的 `/sw.js` 改為相對路徑 `sw.js`。此修正解決了在 GitHub Pages 等子目錄環境下因 404 錯誤導致 Service Worker 註冊失敗的問題，從而恢復了 Web Push 通知功能。
- * v17.4 (通知修正): 修正了 `subscribeToPush` 函式，使其能正確從新增的後端端點 `/api/comfyui/vapid_public_key` 獲取公鑰。增加了對 fetch 回應的驗證，確保在收到有效的公鑰後才繼續執行訂閱邏輯，從而解決了 `TypeError` 和 `405` 錯誤。
- * v17.3 (進度條修正): 1. 修正了 `handleGenerateClick` 中 `totalExpectedSteps` 的計算邏輯，使其在啟用 ADetailer 時能正確加總主生成與臉部修復的步數。 2. 改善了 `connectStatusWebSocket` 中的進度更新邏輯，使其能更穩定地處理來自多個 KSampler 節點（如主生成+臉部修復）的進度訊息，確保進度條能正確達到 100%。
+ * v17.7 (下載修正): 修正了歷史紀錄燈箱中的下載按鈕行為。原先直接連結可能會導致瀏覽器在新分頁開啟檔案而非下載。新邏輯會攔截點擊事件，使用 fetch 將檔案資料讀取為 Blob，然後動態建立一個連結來強制觸發瀏覽器的下載功能，確保所有檔案類型都能被正確下載。
+ * v17.6 (自動刷新模型列表): 增強了模型選擇的使用者體驗。現在，每次使用者點擊「選擇 Checkpoint 模型」或「新增/管理 LoRA」按鈕時，前端會自動向後端重新請求最新的模型列表並更新彈出視窗中的內容。這確保了模型列表始終是最新的，無需手動重新整理頁面。
+ * v17.5 (通知修正): 修正了 `initialize` 函式中 Service Worker 的註冊路徑，從錯誤的 `/static/js/sw.js` 改為相對路徑 `sw.js`。此修正解決了在 GitHub Pages 等子目錄環境下因 404 錯誤導致 Service Worker 註冊失敗的問題，從而恢復了 Web Push 通知功能。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1825,7 +1825,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.5');
+        console.log('應用程式已初始化 v17.7');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -1849,8 +1849,25 @@ document.addEventListener('DOMContentLoaded', () => {
         
         setInterval(pollQueueStatus, 3000); 
         
-        if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
-        if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
+        if (modelSelectionModal) {
+            bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
+            // [v17.6 修正] 在模型選擇 Modal 顯示時觸發刷新
+            modelSelectionModal.addEventListener('show.bs.modal', async () => {
+                if (modelSelectionGrid) modelSelectionGrid.innerHTML = '<p class="text-muted">正在刷新模型列表...</p>';
+                await fetchAndPopulateCheckpoints();
+            });
+        }
+        
+        if (loraSelectionModal) {
+            bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
+            // [v17.6 修正] 在 LoRA 選擇 Modal 顯示時觸發刷新
+            loraSelectionModal.addEventListener('show.bs.modal', async () => {
+                tempSelectedLoras.clear();
+                comfyFormElements.loras.forEach(lora => tempSelectedLoras.add(lora.name));
+                await updateLoraListForModel(comfyFormElements.model);
+            });
+        }
+
         if (inpaintCanvasModalEl) bsInpaintCanvasModal = new bootstrap.Modal(inpaintCanvasModalEl);
         const gmLoginModalEl = getById('gm-login-modal');
         if (gmLoginModalEl) bsGmLoginModal = new bootstrap.Modal(gmLoginModalEl);
@@ -1999,16 +2016,56 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        if (loraSelectionModal) {
-            loraSelectionModal.addEventListener('show.bs.modal', () => {
-                tempSelectedLoras.clear();
-                comfyFormElements.loras.forEach(lora => tempSelectedLoras.add(lora.name));
-                loraSelectionGrid.querySelectorAll('.model-card').forEach(card => {
-                    const checkbox = card.querySelector('.lora-card-checkbox');
-                    if (checkbox) checkbox.checked = tempSelectedLoras.has(card.dataset.itemName);
-                });
+        // [v17.7 修正] 為燈箱下載按鈕新增強制下載邏輯
+        if (modalDownloadBtn) {
+            modalDownloadBtn.addEventListener('click', async (e) => {
+                e.preventDefault(); // 阻止預設的連結跳轉行為
+
+                const url = modalDownloadBtn.href;
+                const filename = modalDownloadBtn.download;
+
+                if (!url || url.endsWith('#') || !filename) {
+                    console.error("下載 URL 或檔名缺失。");
+                    return;
+                }
+
+                // 提供視覺回饋
+                const originalIconHTML = modalDownloadBtn.innerHTML;
+                modalDownloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+                modalDownloadBtn.style.pointerEvents = 'none'; // 防止重複點擊
+
+                try {
+                    // 使用 fetch 獲取檔案
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`無法獲取檔案: ${response.status} ${response.statusText}`);
+                    }
+                    const blob = await response.blob();
+
+                    // 建立一個暫時的 URL 並觸發下載
+                    const objectUrl = URL.createObjectURL(blob);
+                    const tempLink = document.createElement('a');
+                    tempLink.href = objectUrl;
+                    tempLink.download = filename;
+                    
+                    document.body.appendChild(tempLink);
+                    tempLink.click();
+                    document.body.removeChild(tempLink);
+
+                    // 釋放記憶體
+                    URL.revokeObjectURL(objectUrl);
+
+                } catch (error) {
+                    console.error("下載檔案時發生錯誤:", error);
+                    alert(`下載失敗: ${error.message}`);
+                } finally {
+                    // 恢復按鈕狀態
+                    modalDownloadBtn.innerHTML = originalIconHTML;
+                    modalDownloadBtn.style.pointerEvents = 'auto';
+                }
             });
         }
+
         if (loraConfirmSelectionBtn) {
             loraConfirmSelectionBtn.addEventListener('click', () => {
                 const newLoras = [];
