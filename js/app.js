@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
- * v17.12 (FLUX & Pony 支援): 為了支援新的模型架構，重構了前端模型處理邏輯。`fetchAndPopulateCheckpoints` 現在會根據模型檔名中的關鍵字（如 "flux", "pony"）自動判斷並附加 `architecture` 類型。`createModelCard` 和生成邏輯 (`handleGenerateClick`) 也同步更新，以確保在選擇模型和發送 API 請求時，能正確地傳遞 `model_architecture` 參數給後端，從而觸發對應的獨立工作流。
+ * v17.13 (設定還原修正): 修正了因非同步載入順序問題導致的採樣器 (Sampler) 與排程器 (Scheduler) 設定無法在頁面重整後正確還原的錯誤。透過調整 `reloadDataForActiveDevice` 函式的執行順序，確保在呼叫 `loadSettings` 應用已儲存的設定之前，所有相關的下拉選單（模型、採樣器等）都已透過 `Promise.all` 完全填充，從而徹底解決了競爭條件 (Race Condition) 問題，保證了所有設定的持久性。
+ * v17.12 (FLUX & Pony 支援): 為了支援新的模型架構，重構了前端模型處理 logique。`fetchAndPopulateCheckpoints` 現在會根據模型檔名中的關鍵字（如 "flux", "pony"）自動判斷並附加 `architecture` 類型。
  * v17.11 (排隊系統支援): 為了配合後端的中央任務排程器，重構了 `handleGenerateClick` 函式。現在，它能夠正確處理後端返回的 `queued` 狀態。
- * v17.10 (下載進度回報): 重構了模型下載功能。現在，點擊下載會從後端獲取一個 `task_id`，並立即建立一個專用的 WebSocket 連線來接收即時進度。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -289,17 +289,23 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`已成功切換到 ${deviceId}。`);
     }
     
+    // [v17.13 修正] 函式功能: 為當前活動裝置重新載入所有資料，並確保執行順序正確
     async function reloadDataForActiveDevice() {
         console.log(`正在為裝置 ${userContext.device_id} 重新載入所有資料...`);
         
+        // 步驟 1: 並行獲取所有需要填充到下拉選單的資料
         await Promise.all([
             fetchAndPopulateCheckpoints(),
             fetchAndPopulateControlNetResources(),
             fetchAndPopulateVideoModels(),
-            fetchAndPopulateSamplers(),
-            loadSettings(),
-            initializeHistory()
+            fetchAndPopulateSamplers()
         ]);
+    
+        // 步驟 2: 確保所有下拉選單都已填充後，才載入並應用儲存的設定
+        await loadSettings();
+    
+        // 步驟 3: 最後初始化歷史紀錄
+        await initializeHistory();
     
         console.log("資料重新載入完成。");
     }
@@ -794,14 +800,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
-    // [v17.12 修正] 函式功能: 獲取模型列表，並根據檔名自動判斷模型架構
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
             let checkpoints = await checkpointsResponse.json();
             
-            // 自動判斷模型架構
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
                 if (modelNameLower.includes('flux')) {
@@ -811,7 +815,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (modelNameLower.includes('sd3')) {
                     model.architecture = 'sd3';
                 } else {
-                    model.architecture = 'sdxl'; // 預設為 SDXL
+                    model.architecture = 'sdxl';
                 }
                 return model;
             });
@@ -933,13 +937,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // [v17.12 修正] 函式功能: 建立模型卡片，並將模型架構儲存到 dataset
     function createModelCard(item, type) {
         const card = document.createElement('div');
         card.className = 'model-card';
         card.dataset.itemName = item.name;
         
-        // 將模型架構儲存在 dataset 中
         if (item.architecture) {
             card.dataset.architecture = item.architecture;
         }
@@ -1363,7 +1365,6 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
-    // [v17.12 修正] 函式功能: 處理生成按鈕點擊，並傳遞正確的模型架構
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1393,7 +1394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const payload = {
             model: comfyFormElements.model,
-            model_architecture: comfyFormElements.model_architecture, // 傳遞正確的架構
+            model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
             main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
@@ -1979,7 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.12');
+        console.log('應用程式已初始化 v17.13');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -2403,7 +2404,6 @@ function filterModels() {
                 if (filter === 'sd3' && modelName.includes('sd3')) return true;
                 if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
                 if (filter === 'flux' && modelName.includes('flux')) return true;
-                // [v17.12 新增] Pony 也屬於 SDXL 類別，但為了篩選器明確，單獨判斷
                 if (filter === 'sdxl' && modelName.includes('pony')) return true;
                 return false;
             });
