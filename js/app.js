@@ -1,10 +1,9 @@
 // static/js/app.js
 
 /**
- * v17.11 (排隊系統支援): 為了配合後端的中央任務排程器，重構了 `handleGenerateClick` 函式。現在，它能夠正確處理後端返回的 `queued` 狀態。當任務被排入佇列時，前端會向使用者顯示明確的排隊提示訊息，並保持生成按鈕禁用，直到輪詢機制 `pollQueueStatus` 檢測到任務開始執行，從而實現了無縫的非同步任務排隊體驗。
- * v17.10 (下載進度回報): 徹底重構了模型下載功能。現在，點擊下載會從後端獲取一個 `task_id`，並立即建立一個專用的 WebSocket 連線來接收即時進度。在下載 Modal 中新增了動態進度條和百分比顯示，並在下載完成時顯示明確的成功訊息，極大地改善了長時間下載的使用者體驗。
- * v17.9 (Scope 修正): 修正了模型下載功能因 `fetchWithUserContext is not defined` 錯誤而失敗的問題。將 `handleDownloadSubmit` 函式移至 `DOMContentLoaded` 事件監聽器內部，使其能夠正確存取在其作用域中定義的 `fetchWithUserContext` 函式，恢復了下載功能。
- * v17.8 (遮罩筆刷修正): 根據需求，將局部修圖 (Inpaint) 的遮罩筆刷從預設的線條改為「紅色、70%透明度、正圓形畫筆」。重構了 `drawOnCanvas` 和 `startDrawing` 函式，使用 `arc` 和 `fill` 來繪製填充圓形，並透過插值確保快速拖曳時筆觸的平滑與連續性。
+ * v17.12 (FLUX & Pony 支援): 為了支援新的模型架構，重構了前端模型處理邏輯。`fetchAndPopulateCheckpoints` 現在會根據模型檔名中的關鍵字（如 "flux", "pony"）自動判斷並附加 `architecture` 類型。`createModelCard` 和生成邏輯 (`handleGenerateClick`) 也同步更新，以確保在選擇模型和發送 API 請求時，能正確地傳遞 `model_architecture` 參數給後端，從而觸發對應的獨立工作流。
+ * v17.11 (排隊系統支援): 為了配合後端的中央任務排程器，重構了 `handleGenerateClick` 函式。現在，它能夠正確處理後端返回的 `queued` 狀態。
+ * v17.10 (下載進度回報): 重構了模型下載功能。現在，點擊下載會從後端獲取一個 `task_id`，並立即建立一個專用的 WebSocket 連線來接收即時進度。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -249,7 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentNodeTotalSteps = 0;
     let isNewNodeProgress = true;
     
-    // [v17.10 新增] 下載 WebSocket 狀態
     let downloadWs = null;
 
     // --- 預設提示詞常數 ---
@@ -796,12 +794,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
+    // [v17.12 修正] 函式功能: 獲取模型列表，並根據檔名自動判斷模型架構
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
-            const checkpoints = await checkpointsResponse.json();
+            let checkpoints = await checkpointsResponse.json();
             
+            // 自動判斷模型架構
+            checkpoints = checkpoints.map(model => {
+                const modelNameLower = model.name.toLowerCase();
+                if (modelNameLower.includes('flux')) {
+                    model.architecture = 'flux';
+                } else if (modelNameLower.includes('pony')) {
+                    model.architecture = 'pony';
+                } else if (modelNameLower.includes('sd3')) {
+                    model.architecture = 'sd3';
+                } else {
+                    model.architecture = 'sdxl'; // 預設為 SDXL
+                }
+                return model;
+            });
+
             if (modelSelectionGrid) {
                 modelSelectionGrid.innerHTML = '';
                 checkpoints.forEach(model => modelSelectionGrid.appendChild(createModelCard(model, 'model')));
@@ -919,11 +933,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // [v17.12 修正] 函式功能: 建立模型卡片，並將模型架構儲存到 dataset
     function createModelCard(item, type) {
         const card = document.createElement('div');
         card.className = 'model-card';
         card.dataset.itemName = item.name;
         
+        // 將模型架構儲存在 dataset 中
+        if (item.architecture) {
+            card.dataset.architecture = item.architecture;
+        }
+
         const imgContainer = document.createElement('div');
         imgContainer.className = 'model-card-img-container';
         if (item.preview_url) {
@@ -945,12 +965,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type === 'model') {
             card.addEventListener('click', async () => {
                 const newModel = item.name;
+                const newArchitecture = item.architecture;
                 if (comfyFormElements.model !== newModel) {
                     comfyFormElements.loras = [];
                     renderSelectedLoras();
                 }
                 comfyFormElements.model = newModel;
-                comfyFormElements.model_architecture = item.architecture;
+                comfyFormElements.model_architecture = newArchitecture;
                 if (comfySelectedModelName) comfySelectedModelName.textContent = newModel;
                 if (bsModelSelectionModal) bsModelSelectionModal.hide();
                 await updateLoraListForModel(newModel);
@@ -1256,7 +1277,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function subscribeToPush() {
         try {
-            // [v17.4 修正] 使用正確的端點並驗證回應
             const response = await fetchWithUserContext('/api/comfyui/vapid_public_key');
             if (!response.ok) {
                 const errorData = await response.json();
@@ -1343,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
-    // [v17.11 修正] 重構以處理排隊狀態
+    // [v17.12 修正] 函式功能: 處理生成按鈕點擊，並傳遞正確的模型架構
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1373,7 +1393,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const payload = {
             model: comfyFormElements.model,
-            model_architecture: comfyFormElements.model_architecture,
+            model_architecture: comfyFormElements.model_architecture, // 傳遞正確的架構
             loras: comfyFormElements.loras,
             main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
@@ -1451,8 +1471,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     comfyStatusText.textContent = `✅ ${result.message}`;
                     comfyStatusText.classList.add('text-success');
                 }
-                if (comfySpinner) comfySpinner.style.display = 'inline-block'; // 保持 spinner 轉動
-                // 不做任何事，等待 pollQueueStatus 自動捕捉
+                if (comfySpinner) comfySpinner.style.display = 'inline-block';
+                // 等待 pollQueueStatus 自動捕捉
             } else {
                 throw new Error('後端響應格式不正確。');
             }
@@ -1774,7 +1794,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // [v17.8 修正] 重構繪圖邏輯以使用圓形筆刷
     function drawOnCanvas(e) {
         if (!isDrawing) return;
         e.preventDefault();
@@ -1786,12 +1805,10 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPos = getMousePos(inpaintCanvas, e);
         }
 
-        // 計算兩點之間的距離和角度
         const dist = Math.sqrt(Math.pow(currentPos.x - lastX, 2) + Math.pow(currentPos.y - lastY, 2));
         const angle = Math.atan2(currentPos.y - lastY, currentPos.x - lastX);
 
-        // 在兩點之間進行插值，以繪製連續的圓形
-        for (let i = 0; i < dist; i += 2) { // 每 2 個像素插值一次
+        for (let i = 0; i < dist; i += 2) {
             const x = lastX + (Math.cos(angle) * i);
             const y = lastY + (Math.sin(angle) * i);
             inpaintCtx.beginPath();
@@ -1818,10 +1835,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                if (data[i+3] > 0) { // 檢查 Alpha 通道
-                    data[i] = 255;     // R
-                    data[i+1] = 255;   // G
-                    data[i+2] = 255;   // B
+                if (data[i+3] > 0) {
+                    data[i] = 255;
+                    data[i+1] = 255;
+                    data[i+2] = 255;
                 }
             }
             tempCtx.putImageData(imageData, 0, 0);
@@ -1835,7 +1852,6 @@ document.addEventListener('DOMContentLoaded', () => {
         originalImage.src = img2imgState.source_image_data;
     }
     
-    // [v17.10 新增] 連接到下載進度 WebSocket
     function connectDownloadWebSocket(taskId, statusDiv) {
         if (downloadWs && downloadWs.readyState === WebSocket.OPEN) {
             downloadWs.close();
@@ -1896,7 +1912,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // [v17.9, v17.10 修正] 將 handleDownloadSubmit 移入此處並修改
     async function handleDownloadSubmit(e) {
         e.preventDefault();
         const form = e.target;
@@ -1964,11 +1979,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.11');
+        console.log('應用程式已初始化 v17.12');
         
         if ('serviceWorker' in navigator) {
             try {
-                // [v17.5 修正] 將 Service Worker 的註冊路徑修正為相對路徑，以適應本地和遠端部署
                 serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
@@ -1990,7 +2004,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (modelSelectionModal) {
             bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
-            // [v17.6 修正] 在模型選擇 Modal 顯示時觸發刷新
             modelSelectionModal.addEventListener('show.bs.modal', async () => {
                 if (modelSelectionGrid) modelSelectionGrid.innerHTML = '<p class="text-muted">正在刷新模型列表...</p>';
                 await fetchAndPopulateCheckpoints();
@@ -1999,7 +2012,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (loraSelectionModal) {
             bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
-            // [v17.6 修正] 在 LoRA 選擇 Modal 顯示時觸發刷新
             loraSelectionModal.addEventListener('show.bs.modal', async () => {
                 tempSelectedLoras.clear();
                 comfyFormElements.loras.forEach(lora => tempSelectedLoras.add(lora.name));
@@ -2155,10 +2167,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // [v17.7 修正] 為燈箱下載按鈕新增強制下載邏輯
         if (modalDownloadBtn) {
             modalDownloadBtn.addEventListener('click', async (e) => {
-                e.preventDefault(); // 阻止預設的連結跳轉行為
+                e.preventDefault();
 
                 const url = modalDownloadBtn.href;
                 const filename = modalDownloadBtn.download;
@@ -2168,20 +2179,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                // 提供視覺回饋
                 const originalIconHTML = modalDownloadBtn.innerHTML;
                 modalDownloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
-                modalDownloadBtn.style.pointerEvents = 'none'; // 防止重複點擊
+                modalDownloadBtn.style.pointerEvents = 'none';
 
                 try {
-                    // 使用 fetch 獲取檔案
                     const response = await fetch(url);
                     if (!response.ok) {
                         throw new Error(`無法獲取檔案: ${response.status} ${response.statusText}`);
                     }
                     const blob = await response.blob();
 
-                    // 建立一個暫時的 URL 並觸發下載
                     const objectUrl = URL.createObjectURL(blob);
                     const tempLink = document.createElement('a');
                     tempLink.href = objectUrl;
@@ -2191,14 +2199,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     tempLink.click();
                     document.body.removeChild(tempLink);
 
-                    // 釋放記憶體
                     URL.revokeObjectURL(objectUrl);
 
                 } catch (error) {
                     console.error("下載檔案時發生錯誤:", error);
                     alert(`下載失敗: ${error.message}`);
                 } finally {
-                    // 恢復按鈕狀態
                     modalDownloadBtn.innerHTML = originalIconHTML;
                     modalDownloadBtn.style.pointerEvents = 'auto';
                 }
@@ -2326,10 +2332,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (inpaintCanvas) {
             inpaintCtx = inpaintCanvas.getContext('2d');
-            // [v17.8 修正] 設定畫筆樣式為半透明紅色填充
             inpaintCtx.fillStyle = 'rgba(255, 0, 0, 0.7)';
 
-            // [v17.8 修正] 重構開始繪圖的邏輯
             const startDrawing = (e) => {
                 isDrawing = true;
                 let pos;
@@ -2340,7 +2344,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 [lastX, lastY] = [pos.x, pos.y];
 
-                // 立即繪製一個點
                 inpaintCtx.beginPath();
                 inpaintCtx.arc(lastX, lastY, brushSize / 2, 0, Math.PI * 2);
                 inpaintCtx.fill();
@@ -2400,6 +2403,8 @@ function filterModels() {
                 if (filter === 'sd3' && modelName.includes('sd3')) return true;
                 if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
                 if (filter === 'flux' && modelName.includes('flux')) return true;
+                // [v17.12 新增] Pony 也屬於 SDXL 類別，但為了篩選器明確，單獨判斷
+                if (filter === 'sdxl' && modelName.includes('pony')) return true;
                 return false;
             });
         }
