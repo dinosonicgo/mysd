@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.14 (模型名稱顯示修正): 修正了在選擇模型或載入設定後，主介面按鈕上顯示的模型名稱包含完整資料夾路徑的問題。現在，無論模型位於哪個子目錄，介面上都只會顯示簡潔的檔案名稱，提升了使用者介面的清晰度。
  * v17.13 (設定還原修正): 修正了因非同步載入順序問題導致的採樣器 (Sampler) 與排程器 (Scheduler) 設定無法在頁面重整後正確還原的錯誤。透過調整 `reloadDataForActiveDevice` 函式的執行順序，確保在呼叫 `loadSettings` 應用已儲存的設定之前，所有相關的下拉選單（模型、採樣器等）都已透過 `Promise.all` 完全填充，從而徹底解決了競爭條件 (Race Condition) 問題，保證了所有設定的持久性。
  * v17.12 (FLUX & Pony 支援): 為了支援新的模型架構，重構了前端模型處理 logique。`fetchAndPopulateCheckpoints` 現在會根據模型檔名中的關鍵字（如 "flux", "pony"）自動判斷並附加 `architecture` 類型。
- * v17.11 (排隊系統支援): 為了配合後端的中央任務排程器，重構了 `handleGenerateClick` 函式。現在，它能夠正確處理後端返回的 `queued` 狀態。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -598,7 +598,8 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (settings.model) {
                 comfyFormElements.model = settings.model;
-                if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model;
+                // [v17.14 修正] 只顯示檔案名稱，而不是完整路徑
+                if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model.split(/[\\/]/).pop();
             }
             if (settings.model_architecture) {
                 comfyFormElements.model_architecture = settings.model_architecture;
@@ -827,7 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!comfyFormElements.model && checkpoints.length > 0) {
                 comfyFormElements.model = checkpoints[0].name;
                 comfyFormElements.model_architecture = checkpoints[0].architecture;
-                if (comfySelectedModelName) comfySelectedModelName.textContent = checkpoints[0].name;
+                if (comfySelectedModelName) comfySelectedModelName.textContent = checkpoints[0].name.split(/[\\/]/).pop();
             }
             await updateLoraListForModel(comfyFormElements.model);
         } catch (error) {
@@ -974,7 +975,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 comfyFormElements.model = newModel;
                 comfyFormElements.model_architecture = newArchitecture;
-                if (comfySelectedModelName) comfySelectedModelName.textContent = newModel;
+                // [v17.14 修正] 只顯示檔案名稱，而不是完整路徑
+                if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
                 if (bsModelSelectionModal) bsModelSelectionModal.hide();
                 await updateLoraListForModel(newModel);
             });
@@ -1655,7 +1657,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const params = item.params || {};
 
-        modalParams.model.textContent = params.model || '未知';
+        modalParams.model.textContent = params.model ? params.model.split(/[\\/]/).pop() : '未知';
         
         modalParams.lora_list.innerHTML = '';
         if (params.loras && params.loras.length > 0) {
@@ -1664,7 +1666,7 @@ document.addEventListener('DOMContentLoaded', () => {
             params.loras.forEach(lora => {
                 const li = document.createElement('li');
                 li.className = 'param-value';
-                li.textContent = `${lora.name} (權重: ${lora.weight.toFixed(1)})`;
+                li.textContent = `${lora.name.split(/[\\/]/).pop()} (權重: ${lora.weight.toFixed(1)})`;
                 ul.appendChild(li);
             });
             modalParams.lora_list.appendChild(ul);
@@ -1980,7 +1982,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.13');
+        console.log('應用程式已初始化 v17.14');
         
         if ('serviceWorker' in navigator) {
             try {
