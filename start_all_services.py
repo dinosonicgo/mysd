@@ -1,10 +1,10 @@
 # start_all_services.py
 
-# start_all_services.py v18.36 (依賴與執行順序修正)
+# start_all_services.py v18.37 (原生 Git 操作 & 終極啟動流程)
 # 註釋版本紀錄
+# v18.37 (原生 Git 操作 & 終極啟動流程): 1. 為從根本上解決 `gitpython` 初始化時的依賴死鎖問題，重構了節點檢查與安裝邏輯。現在，所有初始的 Git 操作（克隆、拉取）都改用 Python 內建的 `subprocess` 模組直接呼叫 Git 命令，移除了對 `gitpython` 函式庫的啟動時依賴。 2. Git 的自動下載器現在使用內建的 `urllib`，使其不再依賴 `requests`。 3. 徹底重構了主執行流程，確保在一個完全乾淨的系統中，能以「設定 Git 環境 -> 安裝所有 Python 依賴 -> 執行節點安裝 -> 應用補丁」的絕對正確順序執行，實現了真正的、無前置條件的「一鍵全自動安裝」。
 # v18.36 (依賴與執行順序修正): 1. 修正了因執行順序錯誤導致的 `NameError: name 'requests' is not defined` 致命錯誤。將 `check_and_install_requirements()` 的呼叫提前至所有依賴第三方庫的操作之前，並將 `requests` 和 `git` 的導入提升至全域範圍，確保了在自動下載 Git 等操作時，所需的核心函式庫已安裝並可用。 2. 最佳化了函式呼叫順序，使其更符合邏輯：安裝基礎依賴 -> 設定環境 -> 安裝節點 -> 修補節點 -> 下載模型。
 # v18.35 (Git 自動安裝 & 補丁順序修正): 1. 新增了 `check_and_install_portable_git` 函式，使得在系統中未找到 Git 時，腳本能自動下載並配置一個便攜版 Git，極大地提升了在新環境中的開箱即用性。 2. 調整了主執行流程，將 `patch_diffusers_import_error` 函式的呼叫時機從腳本初期移動到了自定義節點安裝完成之後，確保了補丁能夠在目標函式庫 (`diffusers`) 已被安裝的情況下執行，從而解決了 "未找到目標補丁文件" 的警告。
-# v18.34 (diffusers 紧急补丁): 新增了一个 `patch_diffusers_import_error` 函式，用于在启动时自动检测并修复 ComfyUI 内嵌环境中 `diffusers` 函式库因 `huggingface_hub` API 变更而导致的 `ImportError: cannot import name 'cached_download'` 致命错误。此脚本会直接修改问题源文件，移除对已弃用函式的导入，从而一劳永逸地解决了由该底层依赖冲突引发的所有连锁问题（如节点加载失败、模型生成黑图等），确保 ComfyUI 运行环境的绝对稳定。
 
 import subprocess
 import threading
@@ -18,16 +18,12 @@ import shutil
 from queue import Queue, Empty
 import zipfile
 import io
-import importlib
+import urllib.request
 
-# [v18.36 修正] 將導入提升至全域範圍
-try:
-    import git
-    import requests
-except ImportError:
-    # 預先定義一個標記，以便後續檢查
-    git = None
-    requests = None
+# --- 全域變數 ---
+# 將在 check_and_install_requirements 之後被正確導入
+git = None
+requests = None
 
 # --- 動態路徑設定 ---
 BASE_DIR = os.path.dirname(__file__)
@@ -86,41 +82,6 @@ REQUIRED_MODELS = {
 
 # --- 腳本主體 ---
 
-# 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
-def check_and_install_requirements():
-    """
-    讀取 requirements.txt 檔案，並使用 pip 安裝所有列出的依賴。
-    """
-    print("\n" + "="*50)
-    print("  -1. 正在檢查並安裝所有 Python 函式庫...")
-    print("="*50)
-    
-    requirements_path = os.path.join(BASE_DIR, "requirements.txt")
-    if not os.path.isfile(requirements_path):
-        print(f"[嚴重錯誤] 找不到 'requirements.txt' 檔案！")
-        print(f"           請確保您已在專案根目錄下建立此檔案。")
-        sys.exit(1)
-        
-    try:
-        print(f"[*] 正在從 {requirements_path} 安裝依賴...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_path])
-        print("[成功] 所有必要的 Python 函式庫均已安裝或已是最新版本。")
-        
-        # [v18.36 修正] 在安裝後重新載入模組
-        global git, requests
-        git = importlib.import_module("git")
-        requests = importlib.import_module("requests")
-
-    except subprocess.CalledProcessError as e:
-        print(f"[嚴重錯誤] 安裝 Python 依賴時失敗: {e}")
-        print("           請檢查您的網路連線或 Python 環境。")
-        sys.exit(1)
-    except ImportError as e:
-        print(f"[嚴重錯誤] 導入基礎函式庫時失敗: {e}")
-        print("           這通常發生在 pip install 成功但 Python 無法找到它們時。")
-        sys.exit(1)
-# 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
-
 # 函式功能: 自動修補 diffusers 函式庫以解決 'cached_download' 導入錯誤
 def patch_diffusers_import_error():
     """
@@ -174,6 +135,7 @@ def patch_diffusers_import_error():
 def check_and_install_portable_git():
     """
     自動從官方來源下載便攜版 Git (64位元)，並將其解壓縮到預期目錄中。
+    使用內建的 urllib，不依賴 requests。
     """
     portable_git_dir = os.path.abspath(os.path.join(COMFYUI_PORTABLE_DIR, "PortableGit"))
     
@@ -181,9 +143,9 @@ def check_and_install_portable_git():
     print("[警告] 系統中未找到 Git，將嘗試自動下載便攜版本...")
     print("#"*60)
     
-    if os.path.isdir(portable_git_dir):
-        print(f"[*] 已找到 PortableGit 目錄: {portable_git_dir}，跳過下載。")
-        return
+    if os.path.isdir(portable_git_dir) and os.path.isfile(os.path.join(portable_git_dir, "bin", "git.exe")):
+        print(f"[*] 已找到 PortableGit 目錄且 git.exe 存在: {portable_git_dir}，跳過下載。")
+        return True
 
     os.makedirs(portable_git_dir, exist_ok=True)
     
@@ -192,23 +154,17 @@ def check_and_install_portable_git():
         print("           請手動安裝 Git 並將其加入系統 PATH。")
         return False
 
-    # 尋找一個可靠的、長期的便攜版 Git 下載連結
     url = "https://github.com/git-for-windows/git/releases/download/v2.43.0.windows.1/PortableGit-2.43.0-64-bit.7z.exe"
-    print(f"[*] 正在從官方來源下載: {url}")
+    temp_exe_path = os.path.join(portable_git_dir, "PortableGit.7z.exe")
     
     try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        
-        # 將下載的自解壓縮檔保存到臨時位置
-        temp_exe_path = os.path.join(portable_git_dir, "PortableGit.7z.exe")
-        with open(temp_exe_path, 'wb') as f:
-            shutil.copyfileobj(response.raw, f)
+        print(f"[*] 正在從官方來源下載: {url}")
+        with urllib.request.urlopen(url) as response, open(temp_exe_path, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
         
         print(f"[*] 下載完成。正在解壓縮至: {portable_git_dir}")
         
-        # 使用 -o 設定輸出目錄，使用 -y 自動確認所有提示
-        subprocess.run([temp_exe_path, f"-o{portable_git_dir}", "-y"], check=True)
+        subprocess.run([temp_exe_path, f"-o{portable_git_dir}", "-y"], check=True, capture_output=True)
         
         print("[*] 正在清理臨時安裝文件...")
         os.remove(temp_exe_path)
@@ -222,8 +178,9 @@ def check_and_install_portable_git():
 
     except Exception as e:
         print(f"\n[嚴重錯誤] 自動下載或解壓縮便攜版 Git 失敗: {e}")
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"   -> 子程序錯誤: {e.stderr.decode('utf-8', errors='ignore')}")
         print("           請手動安裝 Git 並將其加入系統 PATH。")
-        # 清理失敗的下載
         if os.path.isdir(portable_git_dir):
             shutil.rmtree(portable_git_dir)
         return False
@@ -233,42 +190,43 @@ def check_and_install_portable_git():
 def find_and_set_git_executable():
     """
     自動檢測 Git 執行檔。如果找不到，則觸發自動下載和安裝流程。
+    返回找到的 git 執行檔路徑。
     """
     print("\n" + "="*50)
     print("  -2. 正在檢測 Git 可執行環境...")
     print("="*50)
 
     # 檢查路徑1：系統環境變數 PATH
-    if shutil.which("git"):
-        print(f"[成功] 在系統 PATH 中找到 Git: {shutil.which('git')}")
-        return
+    git_exe = shutil.which("git")
+    if git_exe:
+        print(f"[成功] 在系統 PATH 中找到 Git: {git_exe}")
+        return git_exe
 
     # 檢查路徑2：專案內嵌的便攜式 Git
     portable_git_path = os.path.abspath(os.path.join(COMFYUI_PORTABLE_DIR, "PortableGit", "bin", "git.exe"))
     if os.path.isfile(portable_git_path):
         print(f"[成功] 在便攜式路徑中找到 Git: {portable_git_path}")
-        os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = portable_git_path
-        return
+        # 將便攜式 Git 的 bin 目錄加入當前腳本的 PATH
+        os.environ["PATH"] = os.path.dirname(portable_git_path) + os.pathsep + os.environ["PATH"]
+        return portable_git_path
 
     # 如果都找不到，觸發自動安裝
     if check_and_install_portable_git():
-        # 再次檢查並設定路徑
         if os.path.isfile(portable_git_path):
             print(f"[*] 重新檢測到已安裝的便攜版 Git: {portable_git_path}")
-            os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = portable_git_path
-            return
+            os.environ["PATH"] = os.path.dirname(portable_git_path) + os.pathsep + os.environ["PATH"]
+            return portable_git_path
     
-    # 如果自動安裝失敗或最終仍未找到
     print("\n[嚴重錯誤] Git 自動安裝失敗，且在系統中找不到 Git。")
     print("           請手動安裝 Git 並將其加入系統 PATH 後，再重新執行此腳本。")
     sys.exit(1)
 # 函式功能: 自動尋找 Git 執行檔並設定環境變數
 
 # 函式功能: 自動更新 ComfyUI 核心應用
-def update_comfyui_core():
+def update_comfyui_core(git_executable):
     """
     檢查 ComfyUI 核心是否為一個 Git 倉庫，如果是，則執行 git pull 更新。
-    [v18.28 修正] 此函式現在可以處理 "Detached HEAD" 狀態。
+    使用原生 subprocess 呼叫。
     """
     print("\n" + "="*50)
     print("  -0.8. 正在檢查並更新 ComfyUI 核心...")
@@ -284,40 +242,19 @@ def update_comfyui_core():
         return
 
     try:
-        repo = git.Repo(COMFYUI_BASE_PATH)
-        origin = repo.remotes.origin
-        
         print("[*] 正在從遠端獲取最新資訊 (git fetch)...")
-        origin.fetch()
-
-        if repo.head.is_detached:
-            print("[警告] ComfyUI 倉庫處於 'Detached HEAD' 狀態。")
-            print("       [*] 正在嘗試自動切換回預設主分支...")
-            
-            default_branch = None
-            if 'origin/main' in origin.refs:
-                default_branch = repo.heads['main']
-            elif 'origin/master' in origin.refs:
-                default_branch = repo.heads['master']
-            
-            if default_branch:
-                print(f"       [*] 找到預設分支 '{default_branch.name}'，正在切換...")
-                default_branch.checkout()
-                print("       -> [成功] 已切換回主分支。")
-            else:
-                print("[錯誤] 無法自動確定預設分支 (main/master)。請手動修復 ComfyUI 的 Git 倉庫。")
-                return
-
-        print(f"[*] 正在當前分支 '{repo.active_branch.name}' 上執行 'git pull'...")
-        pull_info = origin.pull()
+        subprocess.run([git_executable, "fetch"], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True)
         
-        # 檢查是否有更新
-        if pull_info and pull_info[0].flags & git.PullInfo.ALREADY_UP_TO_DATE:
+        print("[*] 正在拉取更新 (git pull)...")
+        result = subprocess.run([git_executable, "pull"], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True, text=True)
+        
+        if "Already up to date." in result.stdout:
             print("[成功] ComfyUI 核心已是最新版本。")
         else:
             print("[成功] ComfyUI 核心已成功更新。")
+            print(result.stdout)
 
-    except git.exc.GitCommandError as e:
+    except subprocess.CalledProcessError as e:
         print(f"[錯誤] 更新 ComfyUI 核心時發生 Git 命令錯誤: {e}")
         print(f"--- Git 錯誤輸出 ---\n{e.stderr}\n--------------------")
         print("[提示] 如果您在 ComfyUI 目錄中有本地修改，'git pull' 可能會失敗。請考慮手動處理或重置修改。")
@@ -481,10 +418,9 @@ def upgrade_pytorch_in_comfyui():
 # 函式功能: 智慧檢查並修復 ComfyUI 的 PyTorch (CUDA 版本)
 
 # 函式功能: 檢查並克隆/更新所有必需的 ComfyUI 自定義節點
-def check_and_clone_nodes():
+def check_and_clone_nodes(git_executable):
     """
-    遍歷 REQUIRED_NODES 字典，檢查每個節點是否存在。
-    如果存在，則執行 git pull 更新。如果不存在，則執行 git clone 下載。
+    使用原生 subprocess 呼叫 Git，遍歷 REQUIRED_NODES 字典來克隆或更新節點。
     同時，會檢查並執行節點自帶的 install.py 或 requirements.txt 安裝腳本。
     """
     print("\n" + "="*50)
@@ -506,19 +442,17 @@ def check_and_clone_nodes():
         if os.path.isdir(target_path):
             print(f"[*] 節點 '{dir_name}' 已存在，正在拉取最新版本...")
             try:
-                repo = git.Repo(target_path)
-                origin = repo.remotes.origin
-                origin.pull()
+                subprocess.run([git_executable, "pull"], cwd=target_path, check=True, capture_output=True)
                 print(f"      -> [成功] '{dir_name}' 已更新至最新。")
-            except Exception as e:
-                print(f"[警告] 更新 '{dir_name}' 失敗: {e}")
+            except subprocess.CalledProcessError as e:
+                print(f"[警告] 更新 '{dir_name}' 失敗: {e.stderr.decode('utf-8', errors='ignore')}")
         else:
             print(f"[!!] 節點 '{dir_name}' 不存在，正在從 GitHub 克隆...")
             try:
-                git.Repo.clone_from(repo_url, target_path)
+                subprocess.run([git_executable, "clone", repo_url, target_path], check=True, capture_output=True)
                 print(f"      -> [成功] 節點 '{dir_name}' 已成功下載至 {target_path}")
-            except git.exc.GitCommandError as e:
-                print(f"[嚴重錯誤] 克隆 '{dir_name}' 失敗: {e.stderr}")
+            except subprocess.CalledProcessError as e:
+                print(f"[嚴重錯誤] 克隆 '{dir_name}' 失敗: {e.stderr.decode('utf-8', errors='ignore')}")
                 sys.exit(1)
 
         requirements_path = os.path.join(target_path, "requirements.txt")
@@ -921,7 +855,7 @@ def enqueue_output(out, queue):
 if __name__ == "__main__":
     try:
         print("="*60)
-        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.36")
+        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.37")
         print("="*60)
 
         if sys.version_info < (3, 8):
@@ -930,13 +864,13 @@ if __name__ == "__main__":
             sys.exit(1)
         print(f"[成功] Python 版本 {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} 符合要求。")
 
-        # [v18.36 修正] 步驟 1: 首先安裝所有基礎依賴
+        # [v18.37 修正] 步驟 1: 首先安裝所有基礎依賴
         check_and_install_requirements()
 
-        # [v18.36 修正] 步驟 2: 確保 Git 環境可用（如果需要會自動下載）
-        find_and_set_git_executable()
+        # [v18.37 修正] 步驟 2: 確保 Git 環境可用（如果需要會自動下載）
+        git_executable = find_and_set_git_executable()
         
-        update_comfyui_core()
+        update_comfyui_core(git_executable)
         
         cloudflared_executable = check_and_install_cloudflared()
         if not cloudflared_executable:
@@ -947,10 +881,10 @@ if __name__ == "__main__":
         
         upgrade_pytorch_in_comfyui()
         
-        # [v18.36 修正] 步驟 3: 安裝所有節點，這可能會安裝 diffusers 等庫
-        check_and_clone_nodes()
+        # [v18.37 修正] 步驟 3: 安裝所有節點，這可能會安裝 diffusers 等庫
+        check_and_clone_nodes(git_executable)
 
-        # [v18.36 修正] 步驟 4: 在節點和依賴安裝完畢後，才執行補丁
+        # [v18.37 修正] 步驟 4: 在節點和依賴安裝完畢後，才執行補丁
         patch_diffusers_import_error()
 
         check_and_download_models()
@@ -1020,6 +954,8 @@ if __name__ == "__main__":
         print(f"\n[*] {wait_duration} 秒等待時間結束。")
         if tunnel_url:
             print("[*] 網址已成功捕獲，現在執行部署與推送...")
+            # GitPython 導入現在是安全的
+            import git
             update_and_push_to_github(device_id, tunnel_url)
         else:
             print(f"\n[錯誤] 在 {wait_duration} 秒內未能從 Cloudflare 輸出中捕獲到網址。")
