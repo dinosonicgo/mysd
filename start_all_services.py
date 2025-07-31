@@ -1,10 +1,10 @@
 # start_all_services.py
 
-# start_all_services.py v18.40 (魯棒的 Git 更新 & 穩定的下載連結)
+# start_all_services.py v18.41 (終極穩定性修正)
 # 註釋版本紀錄
+# v18.41 (終極穩定性修正): 1. 徹底重構 `update_comfyui_core` 函式，採用更魯棒的 `git reset --hard` 策略來處理 "Detached HEAD" 和本地修改衝突，確保本地倉庫能被強制與遠端主分支同步。 2. 修正 `check_and_install_cloudflared` 函式，改為直接下載 `.exe` 可執行檔而非 `.zip` 壓縮檔，並使用內建的 `urllib` 函式庫，徹底解決了因 GitHub URL 重定向或快取導致的 404 下載失敗問題。
 # v18.40 (魯棒的 Git 更新 & 穩定的下載連結): 1. 重構了 `update_comfyui_core` 函式，使其能夠智慧處理 Git 的 "Detached HEAD" 狀態。在更新前，腳本會自動檢查倉庫狀態，如果發現處於分離頭緒，會自動嘗試切換回預設的主分支（main/master），從而解決了在特定版本下 `git pull` 失敗的問題。 2. 修正了 `check_and_install_cloudflared` 函式中硬編碼的下載連結。改為使用 GitHub 提供的 `.../latest/download/...` 永久連結，確保每次都能自動獲取最新的穩定版本，避免了因版本號變更導致的 404 下載失敗錯誤。
 # v18.39 (終極依賴解耦修正): 為徹底解決 `gitpython` 在導入時檢查 Git 執行檔而導致的啟動死鎖問題，對啟動流程進行了根本性重構。1. `check_and_install_requirements` 函式現在只負責安裝依賴，不再嘗試導入模組。2. `git` 和 `requests` 模組的導入被延後到主執行流程中，在確認所有環境（包括 Git 可執行檔）都準備就緒後才執行。3. `find_and_set_git_executable` 及其下載輔助函式現在完全不依賴任何第三方庫。此修改確保了在一個完全乾淨的系統上，腳本能以絕對正確的順序（準備原生環境 -> 安裝 Python 依賴 -> 導入並使用庫）完成所有初始化，從而根除了 `ImportError: Bad git executable` 錯誤。
-# v18.38 (函式順序修正): 修正了因函式定義與呼叫順序錯亂而導致的 `NameError: name 'check_and_install_requirements' is not defined` 致命錯誤。將 `check_and_install_requirements` 函式的定義移動到了腳本中所有函式呼叫的最前端，確保在主執行流程中能夠被正確找到並執行，恢復了啟動腳本的正常功能。
 
 import subprocess
 import threading
@@ -241,8 +241,8 @@ def find_and_set_git_executable():
 # 函式功能: 自動更新 ComfyUI 核心應用
 def update_comfyui_core(git_executable):
     """
-    檢查 ComfyUI 核心是否為一個 Git 倉庫，如果是，則執行 git pull 更新。
-    此版本能智慧處理 "Detached HEAD" 狀態。
+    檢查 ComfyUI 核心是否為一個 Git 倉庫，如果是，則執行強制同步。
+    此版本能智慧處理 "Detached HEAD" 和本地修改衝突。
     """
     print("\n" + "="*50)
     print("  -0.8. 正在檢查並更新 ComfyUI 核心...")
@@ -258,43 +258,36 @@ def update_comfyui_core(git_executable):
         return
 
     try:
-        repo = git.Repo(COMFYUI_BASE_PATH)
-        origin = repo.remotes.origin
+        # 確定預設分支 (main 或 master)
+        default_branch = "main"
+        try:
+            # 檢查遠端是否存在 main 分支
+            subprocess.run([git_executable, "show-branch", "origin/main"], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            # 如果 main 不存在，回退到 master
+            print("[*] 未找到 'main' 分支，將嘗試使用 'master' 分支。")
+            default_branch = "master"
+
+        print(f"[*] 將與遠端 '{default_branch}' 分支進行同步。")
+
+        print("[*] 步驟 1/4: 儲藏本地修改 (git stash)...")
+        subprocess.run([git_executable, "stash"], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True)
+
+        print(f"[*] 步驟 2/4: 切換到目標分支 (git checkout {default_branch})...")
+        subprocess.run([git_executable, "checkout", default_branch], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True)
+
+        print("[*] 步驟 3/4: 獲取遠端所有更新 (git fetch origin)...")
+        subprocess.run([git_executable, "fetch", "origin"], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True)
         
-        print("[*] 正在從遠端獲取最新資訊 (git fetch)...")
-        origin.fetch()
+        print(f"[*] 步驟 4/4: 強制重置本地分支到遠端狀態 (git reset --hard origin/{default_branch})...")
+        subprocess.run([git_executable, "reset", "--hard", f"origin/{default_branch}"], cwd=COMFYUI_BASE_PATH, check=True, capture_output=True)
 
-        if repo.head.is_detached:
-            print("[警告] ComfyUI 倉庫處於 'Detached HEAD' 狀態。")
-            print("       [*] 正在嘗試自動切換回預設主分支...")
-            
-            # 嘗試找到 main 或 master 分支
-            default_branch = None
-            if 'main' in repo.heads:
-                default_branch = repo.heads.main
-            elif 'master' in repo.heads:
-                default_branch = repo.heads.master
-            
-            if default_branch:
-                print(f"       [*] 找到預設分支 '{default_branch.name}'，正在切換...")
-                default_branch.checkout()
-                print("       -> [成功] 已切換回主分支。")
-            else:
-                print("[錯誤] 無法自動確定預設分支 (main/master)。請手動修復 ComfyUI 的 Git 倉庫。")
-                return
+        print("[成功] ComfyUI 核心已成功強制同步至最新版本。")
 
-        print(f"[*] 正在當前分支 '{repo.active_branch.name}' 上執行 'git pull'...")
-        pull_info = origin.pull()
-        
-        if pull_info and pull_info[0].flags & git.PullInfo.ALREADY_UP_TO_DATE:
-            print("[成功] ComfyUI 核心已是最新版本。")
-        else:
-            print("[成功] ComfyUI 核心已成功更新。")
-
-    except git.exc.GitCommandError as e:
-        print(f"[錯誤] 更新 ComfyUI 核心時發生 Git 命令錯誤: {e}")
-        print(f"--- Git 錯誤輸出 ---\n{e.stderr}\n--------------------")
-        print("[提示] 如果您在 ComfyUI 目錄中有本地修改，'git pull' 可能會失敗。請考慮手動處理或重置修改。")
+    except subprocess.CalledProcessError as e:
+        print(f"[錯誤] 強制同步 ComfyUI 核心時發生 Git 命令錯誤: {e}")
+        error_output = e.stderr.decode('utf-8', errors='ignore')
+        print(f"--- Git 錯誤輸出 ---\n{error_output}\n--------------------")
     except Exception as e:
         print(f"[嚴重錯誤] 更新 ComfyUI 核心時發生未知錯誤: {e}")
 # 函式功能: 自動更新 ComfyUI 核心應用
@@ -303,7 +296,7 @@ def update_comfyui_core(git_executable):
 def check_and_install_cloudflared():
     """
     檢查 cloudflared 是否可用。如果系統 PATH 中沒有，
-    則會自動從 GitHub 的最新穩定版下載並解壓縮。
+    則會自動從 GitHub 的最新穩定版直接下載 .exe 檔案。
     """
     print("\n" + "="*50)
     print("  -0.5. 正在檢查 Cloudflare Tunnel (cloudflared)...")
@@ -327,29 +320,22 @@ def check_and_install_cloudflared():
         print("[嚴重錯誤] 自動下載僅支援 Windows 64位元系統。")
         return None
 
-    # [v18.40 修正] 使用永久的 'latest' 連結
-    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.zip"
+    # [v18.41 修正] 直接下載 .exe 檔案，使用 urllib
+    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
     print(f"[*] 正在從官方最新版本來源下載: {url}")
 
     try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-
-        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            for file_info in z.infolist():
-                if file_info.filename.lower() == 'cloudflared.exe':
-                    print(f"[*] 正在解壓縮 '{file_info.filename}' 至 '{local_bin_dir}'...")
-                    z.extract(file_info, path=local_bin_dir)
-                    if os.path.isfile(cloudflared_executable_path):
-                        print("[成功] 'cloudflared.exe' 已成功下載並配置。")
-                        return cloudflared_executable_path
-                    else:
-                        raise FileNotFoundError("解壓縮後未找到 cloudflared.exe")
-            
-            raise FileNotFoundError("在下載的壓縮檔中未找到 cloudflared.exe")
+        with urllib.request.urlopen(url) as response, open(cloudflared_executable_path, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
+        
+        if os.path.isfile(cloudflared_executable_path):
+            print("[成功] 'cloudflared.exe' 已成功下載並配置。")
+            return cloudflared_executable_path
+        else:
+            raise FileNotFoundError("下載後未找到 cloudflared.exe")
 
     except Exception as e:
-        print(f"[嚴重錯誤] 自動下載或解壓縮 'cloudflared' 失敗: {e}")
+        print(f"[嚴重錯誤] 自動下載 'cloudflared' 失敗: {e}")
         return None
 # 函式功能: 自動檢查、下載並配置 Cloudflare Tunnel 執行檔
 
@@ -880,7 +866,7 @@ def enqueue_output(out, queue):
 if __name__ == "__main__":
     try:
         print("="*60)
-        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.39")
+        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.41")
         print("="*60)
 
         if sys.version_info < (3, 8):
@@ -888,13 +874,13 @@ if __name__ == "__main__":
             sys.exit(1)
         print(f"[成功] Python 版本 {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} 符合要求。")
 
-        # [v18.39 修正] 步驟 1: 準備原生環境 (Git)
+        # 步驟 1: 準備原生環境 (Git)
         git_executable = find_and_set_git_executable()
 
-        # [v18.39 修正] 步驟 2: 安裝所有 Python 依賴
+        # 步驟 2: 安裝所有 Python 依賴
         check_and_install_requirements()
         
-        # [v18.39 修正] 步驟 3: 安全地導入第三方函式庫
+        # 步驟 3: 安全地導入第三方函式庫
         try:
             import git
             import requests
@@ -914,10 +900,10 @@ if __name__ == "__main__":
         
         upgrade_pytorch_in_comfyui()
         
-        # [v18.39 修正] 步驟 4: 安裝所有節點
+        # 步驟 4: 安裝所有節點
         check_and_clone_nodes(git_executable)
 
-        # [v18.39 修正] 步驟 5: 在節點和依賴安裝完畢後，才執行補丁
+        # 步驟 5: 在節點和依賴安裝完畢後，才執行補丁
         patch_diffusers_import_error()
 
         check_and_download_models()
