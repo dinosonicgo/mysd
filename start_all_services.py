@@ -1,10 +1,10 @@
 # start_all_services.py
 
-# start_all_services.py v18.35 (Git 自動安裝 & 補丁順序修正)
+# start_all_services.py v18.36 (依賴與執行順序修正)
 # 註釋版本紀錄
+# v18.36 (依賴與執行順序修正): 1. 修正了因執行順序錯誤導致的 `NameError: name 'requests' is not defined` 致命錯誤。將 `check_and_install_requirements()` 的呼叫提前至所有依賴第三方庫的操作之前，並將 `requests` 和 `git` 的導入提升至全域範圍，確保了在自動下載 Git 等操作時，所需的核心函式庫已安裝並可用。 2. 最佳化了函式呼叫順序，使其更符合邏輯：安裝基礎依賴 -> 設定環境 -> 安裝節點 -> 修補節點 -> 下載模型。
 # v18.35 (Git 自動安裝 & 補丁順序修正): 1. 新增了 `check_and_install_portable_git` 函式，使得在系統中未找到 Git 時，腳本能自動下載並配置一個便攜版 Git，極大地提升了在新環境中的開箱即用性。 2. 調整了主執行流程，將 `patch_diffusers_import_error` 函式的呼叫時機從腳本初期移動到了自定義節點安裝完成之後，確保了補丁能夠在目標函式庫 (`diffusers`) 已被安裝的情況下執行，從而解決了 "未找到目標補丁文件" 的警告。
 # v18.34 (diffusers 紧急补丁): 新增了一个 `patch_diffusers_import_error` 函式，用于在启动时自动检测并修复 ComfyUI 内嵌环境中 `diffusers` 函式库因 `huggingface_hub` API 变更而导致的 `ImportError: cannot import name 'cached_download'` 致命错误。此脚本会直接修改问题源文件，移除对已弃用函式的导入，从而一劳永逸地解决了由该底层依赖冲突引发的所有连锁问题（如节点加载失败、模型生成黑图等），确保 ComfyUI 运行环境的绝对稳定。
-# v18.33 (依賴衝突修正): 為了从根本上解决因 `huggingface_hub` 版本不相容导致的 `ImportError: cannot import name 'cached_download'` 致命错误，在自定义节点安装流程的最开始，强制将 `huggingface_hub` 函式库安装并锁定在一个经过验证的稳定版本 `0.20.3`。此修正确保了所有依赖此函式库的节点（如 WanVideoWrapper）都能在一个一致且相容的环境中运行，从而消除了潜在的连锁故障，恢复了系统的稳定性。
 
 import subprocess
 import threading
@@ -18,6 +18,16 @@ import shutil
 from queue import Queue, Empty
 import zipfile
 import io
+import importlib
+
+# [v18.36 修正] 將導入提升至全域範圍
+try:
+    import git
+    import requests
+except ImportError:
+    # 預先定義一個標記，以便後續檢查
+    git = None
+    requests = None
 
 # --- 動態路徑設定 ---
 BASE_DIR = os.path.dirname(__file__)
@@ -76,6 +86,41 @@ REQUIRED_MODELS = {
 
 # --- 腳本主體 ---
 
+# 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
+def check_and_install_requirements():
+    """
+    讀取 requirements.txt 檔案，並使用 pip 安裝所有列出的依賴。
+    """
+    print("\n" + "="*50)
+    print("  -1. 正在檢查並安裝所有 Python 函式庫...")
+    print("="*50)
+    
+    requirements_path = os.path.join(BASE_DIR, "requirements.txt")
+    if not os.path.isfile(requirements_path):
+        print(f"[嚴重錯誤] 找不到 'requirements.txt' 檔案！")
+        print(f"           請確保您已在專案根目錄下建立此檔案。")
+        sys.exit(1)
+        
+    try:
+        print(f"[*] 正在從 {requirements_path} 安裝依賴...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_path])
+        print("[成功] 所有必要的 Python 函式庫均已安裝或已是最新版本。")
+        
+        # [v18.36 修正] 在安裝後重新載入模組
+        global git, requests
+        git = importlib.import_module("git")
+        requests = importlib.import_module("requests")
+
+    except subprocess.CalledProcessError as e:
+        print(f"[嚴重錯誤] 安裝 Python 依賴時失敗: {e}")
+        print("           請檢查您的網路連線或 Python 環境。")
+        sys.exit(1)
+    except ImportError as e:
+        print(f"[嚴重錯誤] 導入基礎函式庫時失敗: {e}")
+        print("           這通常發生在 pip install 成功但 Python 無法找到它們時。")
+        sys.exit(1)
+# 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
+
 # 函式功能: 自動修補 diffusers 函式庫以解決 'cached_download' 導入錯誤
 def patch_diffusers_import_error():
     """
@@ -100,7 +145,7 @@ def patch_diffusers_import_error():
 
         if not os.path.isfile(patch_file_path):
             print(f"[警告] 未找到目標補丁文件: {patch_file_path}")
-            print("       將跳過此步驟。如果遇到 'cached_download' 相關錯誤，請手動檢查。")
+            print("       可能是因為 `diffusers` 尚未被任何節點安裝。將跳過此步驟。")
             return
 
         with open(patch_file_path, 'r', encoding='utf-8') as f:
@@ -218,38 +263,6 @@ def find_and_set_git_executable():
     print("           請手動安裝 Git 並將其加入系統 PATH 後，再重新執行此腳本。")
     sys.exit(1)
 # 函式功能: 自動尋找 Git 執行檔並設定環境變數
-
-# 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
-def check_and_install_requirements():
-    """
-    讀取 requirements.txt 檔案，並使用 pip 安裝所有列出的依賴。
-    """
-    print("\n" + "="*50)
-    print("  -1. 正在檢查並安裝所有 Python 函式庫...")
-    print("="*50)
-    
-    requirements_path = os.path.join(BASE_DIR, "requirements.txt")
-    if not os.path.isfile(requirements_path):
-        print(f"[嚴重錯誤] 找不到 'requirements.txt' 檔案！")
-        print(f"           請確保您已在專案根目錄下建立此檔案。")
-        sys.exit(1)
-        
-    try:
-        print(f"[*] 正在從 {requirements_path} 安裝依賴...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_path])
-        print("[成功] 所有必要的 Python 函式庫均已安裝或已是最新版本。")
-        global git, requests
-        import git
-        import requests
-    except subprocess.CalledProcessError as e:
-        print(f"[嚴重錯誤] 安裝 Python 依賴時失敗: {e}")
-        print("           請檢查您的網路連線或 Python 環境。")
-        sys.exit(1)
-    except ImportError as e:
-        print(f"[嚴重錯誤] 導入基礎函式庫時失敗: {e}")
-        print("           這通常發生在 pip install 成功但 Python 無法找到它們時。")
-        sys.exit(1)
-# 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
 
 # 函式功能: 自動更新 ComfyUI 核心應用
 def update_comfyui_core():
@@ -908,7 +921,7 @@ def enqueue_output(out, queue):
 if __name__ == "__main__":
     try:
         print("="*60)
-        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.35")
+        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.36")
         print("="*60)
 
         if sys.version_info < (3, 8):
@@ -917,9 +930,11 @@ if __name__ == "__main__":
             sys.exit(1)
         print(f"[成功] Python 版本 {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} 符合要求。")
 
-        find_and_set_git_executable()
-
+        # [v18.36 修正] 步驟 1: 首先安裝所有基礎依賴
         check_and_install_requirements()
+
+        # [v18.36 修正] 步驟 2: 確保 Git 環境可用（如果需要會自動下載）
+        find_and_set_git_executable()
         
         update_comfyui_core()
         
@@ -931,9 +946,11 @@ if __name__ == "__main__":
         print("-" * 60)
         
         upgrade_pytorch_in_comfyui()
+        
+        # [v18.36 修正] 步驟 3: 安裝所有節點，這可能會安裝 diffusers 等庫
         check_and_clone_nodes()
 
-        # [v18.35 修正] 將補丁的執行時機移動到節點安裝之後
+        # [v18.36 修正] 步驟 4: 在節點和依賴安裝完畢後，才執行補丁
         patch_diffusers_import_error()
 
         check_and_download_models()
