@@ -1,10 +1,10 @@
 # start_all_services.py
 
-# start_all_services.py v18.38 (函式順序修正)
+# start_all_services.py v18.39 (終極依賴解耦修正)
 # 註釋版本紀錄
+# v18.39 (終極依賴解耦修正): 為徹底解決 `gitpython` 在導入時檢查 Git 執行檔而導致的啟動死鎖問題，對啟動流程進行了根本性重構。1. `check_and_install_requirements` 函式現在只負責安裝依賴，不再嘗試導入模組。2. `git` 和 `requests` 模組的導入被延後到主執行流程中，在確認所有環境（包括 Git 可執行檔）都準備就緒後才執行。3. `find_and_set_git_executable` 及其下載輔助函式現在完全不依賴任何第三方庫。此修改確保了在一個完全乾淨的系統上，腳本能以絕對正確的順序（準備原生環境 -> 安裝 Python 依賴 -> 導入並使用庫）完成所有初始化，從而根除了 `ImportError: Bad git executable` 錯誤。
 # v18.38 (函式順序修正): 修正了因函式定義與呼叫順序錯亂而導致的 `NameError: name 'check_and_install_requirements' is not defined` 致命錯誤。將 `check_and_install_requirements` 函式的定義移動到了腳本中所有函式呼叫的最前端，確保在主執行流程中能夠被正確找到並執行，恢復了啟動腳本的正常功能。
 # v18.37 (原生 Git 操作 & 終極啟動流程): 1. 為從根本上解決 `gitpython` 初始化時的依賴死鎖問題，重構了節點檢查與安裝邏輯。現在，所有初始的 Git 操作（克隆、拉取）都改用 Python 內建的 `subprocess` 模組直接呼叫 Git 命令，移除了對 `gitpython` 函式庫的啟動時依賴。 2. Git 的自動下載器現在使用內建的 `urllib`，使其不再依賴 `requests`。 3. 徹底重構了主執行流程，確保在一個完全乾淨的系統中，能以「設定 Git 環境 -> 安裝所有 Python 依賴 -> 執行節點安裝 -> 應用補丁」的絕對正確順序執行，實現了真正的、無前置條件的「一鍵全自動安裝」。
-# v18.36 (依賴與執行順序修正): 1. 修正了因執行順序錯誤導致的 `NameError: name 'requests' is not defined` 致命錯誤。將 `check_and_install_requirements()` 的呼叫提前至所有依賴第三方庫的操作之前，並將 `requests` 和 `git` 的導入提升至全域範圍，確保了在自動下載 Git 等操作時，所需的核心函式庫已安裝並可用。 2. 最佳化了函式呼叫順序，使其更符合邏輯：安裝基礎依賴 -> 設定環境 -> 安裝節點 -> 修補節點 -> 下載模型。
 
 import subprocess
 import threading
@@ -19,10 +19,9 @@ from queue import Queue, Empty
 import zipfile
 import io
 import urllib.request
-import importlib
 
 # --- 全域變數 ---
-# 將在 check_and_install_requirements 之後被正確導入
+# 將在主流程中被正確導入和賦值
 git = None
 requests = None
 
@@ -77,7 +76,6 @@ REQUIRED_MODELS = {
 
     # --- FLUX.1 Models & VAE ---
     "flux1-schnell-Q5_K_S.gguf": {"url": "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q5_K_S.gguf", "path": os.path.join(COMFYUI_BASE_PATH, "models", "unet")},
-    # [v18.32 修正] 將 VAE 下載來源更換為公開可訪問的鏡像連結，以解決 401 錯誤
     "ae.safetensors": {"url": "https://huggingface.co/ffxvs/vae-flux/resolve/main/ae.safetensors?download=true", "path": os.path.join(COMFYUI_BASE_PATH, "models", "vae")},
 }
 
@@ -87,6 +85,7 @@ REQUIRED_MODELS = {
 def check_and_install_requirements():
     """
     讀取 requirements.txt 檔案，並使用 pip 安裝所有列出的依賴。
+    此函式不再負責導入模組。
     """
     print("\n" + "="*50)
     print("  -1. 正在檢查並安裝所有 Python 函式庫...")
@@ -95,26 +94,15 @@ def check_and_install_requirements():
     requirements_path = os.path.join(BASE_DIR, "requirements.txt")
     if not os.path.isfile(requirements_path):
         print(f"[嚴重錯誤] 找不到 'requirements.txt' 檔案！")
-        print(f"           請確保您已在專案根目錄下建立此檔案。")
         sys.exit(1)
         
     try:
         print(f"[*] 正在從 {requirements_path} 安裝依賴...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_path])
         print("[成功] 所有必要的 Python 函式庫均已安裝或已是最新版本。")
-        
-        # [v18.36 修正] 在安裝後重新載入模組
-        global git, requests
-        git = importlib.import_module("git")
-        requests = importlib.import_module("requests")
-
     except subprocess.CalledProcessError as e:
         print(f"[嚴重錯誤] 安裝 Python 依賴時失敗: {e}")
         print("           請檢查您的網路連線或 Python 環境。")
-        sys.exit(1)
-    except ImportError as e:
-        print(f"[嚴重錯誤] 導入基礎函式庫時失敗: {e}")
-        print("           這通常發生在 pip install 成功但 Python 無法找到它們時。")
         sys.exit(1)
 # 函式功能: 檢查並安裝 requirements.txt 中定義的所有 Python 函式庫
 
@@ -122,8 +110,6 @@ def check_and_install_requirements():
 def patch_diffusers_import_error():
     """
     自動檢查並修復 ComfyUI 內嵌 Python 環境中 `diffusers` 函式庫的 `ImportError`。
-    此錯誤源於 `huggingface_hub` 函式庫更新後移除了 `cached_download` 函式。
-    本函式會定位問題文件並自動移除對已弃用函式的導入。
     """
     print("\n" + "="*50)
     print("  -3. 正在檢查並應用 diffusers 緊急補丁...")
@@ -163,7 +149,6 @@ def patch_diffusers_import_error():
 
     except Exception as e:
         print(f"[嚴重錯誤] 在應用 diffusers 補丁時發生未知錯誤: {e}")
-        print("           請手動檢查文件並移除 'cached_download' 的導入。")
         sys.exit(1)
 # 函式功能: 自動修補 diffusers 函式庫以解決 'cached_download' 導入錯誤
 
@@ -187,7 +172,6 @@ def check_and_install_portable_git():
     
     if sys.platform != "win32" or not sys.maxsize > 2**32:
         print("[嚴重錯誤] Git 的自動下載僅支援 Windows 64位元系統。")
-        print("           請手動安裝 Git 並將其加入系統 PATH。")
         return False
 
     url = "https://github.com/git-for-windows/git/releases/download/v2.43.0.windows.1/PortableGit-2.43.0-64-bit.7z.exe"
@@ -216,7 +200,6 @@ def check_and_install_portable_git():
         print(f"\n[嚴重錯誤] 自動下載或解壓縮便攜版 Git 失敗: {e}")
         if hasattr(e, 'stderr') and e.stderr:
             print(f"   -> 子程序錯誤: {e.stderr.decode('utf-8', errors='ignore')}")
-        print("           請手動安裝 Git 並將其加入系統 PATH。")
         if os.path.isdir(portable_git_dir):
             shutil.rmtree(portable_git_dir)
         return False
@@ -232,21 +215,17 @@ def find_and_set_git_executable():
     print("  -2. 正在檢測 Git 可執行環境...")
     print("="*50)
 
-    # 檢查路徑1：系統環境變數 PATH
     git_exe = shutil.which("git")
     if git_exe:
         print(f"[成功] 在系統 PATH 中找到 Git: {git_exe}")
         return git_exe
 
-    # 檢查路徑2：專案內嵌的便攜式 Git
     portable_git_path = os.path.abspath(os.path.join(COMFYUI_PORTABLE_DIR, "PortableGit", "bin", "git.exe"))
     if os.path.isfile(portable_git_path):
         print(f"[成功] 在便攜式路徑中找到 Git: {portable_git_path}")
-        # 將便攜式 Git 的 bin 目錄加入當前腳本的 PATH
         os.environ["PATH"] = os.path.dirname(portable_git_path) + os.pathsep + os.environ["PATH"]
         return portable_git_path
 
-    # 如果都找不到，觸發自動安裝
     if check_and_install_portable_git():
         if os.path.isfile(portable_git_path):
             print(f"[*] 重新檢測到已安裝的便攜版 Git: {portable_git_path}")
@@ -324,7 +303,6 @@ def check_and_install_cloudflared():
     
     if sys.platform != "win32" or not sys.maxsize > 2**32:
         print("[嚴重錯誤] 自動下載僅支援 Windows 64位元系統。")
-        print("           請手動從 https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/ 下載並安裝 cloudflared。")
         return None
 
     url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.zip"
@@ -349,7 +327,6 @@ def check_and_install_cloudflared():
 
     except Exception as e:
         print(f"[嚴重錯誤] 自動下載或解壓縮 'cloudflared' 失敗: {e}")
-        print("           請手動從 https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/ 下載並安裝。")
         return None
 # 函式功能: 自動檢查、下載並配置 Cloudflare Tunnel 執行檔
 
@@ -391,7 +368,6 @@ def upgrade_pytorch_in_comfyui():
 
     if not os.path.isfile(comfyui_python_executable):
         print(f"[嚴重錯誤] 找不到 ComfyUI 的內嵌 Python: {comfyui_python_executable}")
-        print(f"           請確認您的資料夾結構是否正確。腳本預期 ComfyUI_windows_portable 資料夾與此專案在同一層目錄下。")
         sys.exit(1)
 
     check_code = "import torch; print(torch.cuda.is_available())"
@@ -446,7 +422,6 @@ def upgrade_pytorch_in_comfyui():
     except subprocess.CalledProcessError as e:
         print("\n" + "#"*60)
         print(f"[嚴重錯誤] 安裝 PyTorch (CUDA 版本) 失敗 (返回碼: {e.returncode})。")
-        print("           這通常由網路問題或顯示卡驅動程式不相容導致。")
         print(f"           錯誤日誌:\n{e.stderr}")
         print("#"*60 + "\n")
         time.sleep(15)
@@ -534,7 +509,6 @@ def check_and_clone_nodes(git_executable):
 
         except subprocess.CalledProcessError as e:
             print(f"[嚴重錯誤] 處理 '{dir_name}' 的依賴時失敗 (返回碼: {e.returncode})。")
-            print(f"         這很可能是導致 'Node does not exist' 錯誤的原因。")
             print(f"         錯誤輸出:\n{e.stderr}")
             sys.exit(1)
 # 函式功能: 檢查並克隆/更新所有必需的 ComfyUI 自定義節點
@@ -544,7 +518,6 @@ def check_and_download_models():
     """
     遍歷 REQUIRED_MODELS 字典，檢查每個模型檔案是否存在。
     如果不存在，則使用 requests 從指定的 URL 下載，並顯示進度條。
-    下載失敗時會打印警告並繼續，而不是終止程式。
     """
     print("\n" + "="*50)
     print("  2. 正在檢查必需的模型檔案...")
@@ -584,8 +557,6 @@ def check_and_download_models():
                 print(f"\n      -> [成功] 模型 '{filename}' 已成功下載。")
             except requests.exceptions.RequestException as e:
                 print(f"\n[嚴重警告] 下載 '{filename}' 失敗: {e}")
-                print(f"           此模型將不可用，但啟動流程將繼續。")
-                print(f"           請稍後嘗試手動從以下 URL 下載並放置到正確路徑: {file_url}")
                 if os.path.exists(target_file): os.remove(target_file)
 # 函式功能: 檢查並下載所有必需的模型檔案
 
@@ -730,18 +701,13 @@ def wait_for_backend_ready(port, timeout=60):
         time.sleep(2)
 
     print(f"\n[嚴重錯誤] 在 {timeout} 秒內無法連接到本地後端服務 {url}。")
-    print("請檢查 Personal Assistant Backend 視窗是否有錯誤訊息。")
     return False
 # 函式功能: 等待後端服務準備就緒
 
 # 函式功能: 部署前端應用並更新共享設定檔至 GitHub
 def update_and_push_to_github(device_id: str, tunnel_url: str):
     """
-    執行完整的部署流程：
-    1. 清理本地 Git 倉庫中的舊前端檔案。
-    2. 複製新的前端主應用程式 (index.html, app.js, sw.js) 到倉庫中，並為 app.js 加上快取破解參數。
-    3. 採用「讀取-修改-寫回」模式，更新共享的 config.json。
-    4. 將所有變更（新增、刪除、修改）一次性推送到 GitHub Pages。
+    執行完整的部署流程，現在使用 gitpython 函式庫。
     """
     print("\n" + "="*50)
     print("  4. 正在部署前端並更新共享設定至 GitHub Pages...")
@@ -760,7 +726,7 @@ def update_and_push_to_github(device_id: str, tunnel_url: str):
     config_path = os.path.join(REDIRECT_FOLDER_PATH, config_filename)
 
     if not all(os.path.exists(p) for p in [source_index_html_path, source_app_js_path, source_sw_js_path]):
-        print("[嚴重錯誤] 找不到必要的前端源檔案 (static/index.html 或 static/js/app.js 或 static/js/sw.js)。")
+        print("[嚴重錯誤] 找不到必要的前端源檔案。")
         return
 
     if not os.path.exists(REDIRECT_FOLDER_PATH):
@@ -891,20 +857,23 @@ def enqueue_output(out, queue):
 if __name__ == "__main__":
     try:
         print("="*60)
-        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.38")
+        print(f"      個人助理伺服器 - 全自動啟動腳本 v18.39")
         print("="*60)
 
         if sys.version_info < (3, 8):
             print(f"[嚴重錯誤] 您的 Python 版本是 {sys.version_info.major}.{sys.version_info.minor}，過於老舊。")
-            print("           此專案需要 Python 3.8 或更新版本。")
             sys.exit(1)
         print(f"[成功] Python 版本 {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} 符合要求。")
 
-        # [v18.38 修正] 步驟 1: 首先安裝所有基礎依賴
-        check_and_install_requirements()
-
-        # [v18.38 修正] 步驟 2: 確保 Git 環境可用（如果需要會自動下載）
+        # [v18.39 修正] 步驟 1: 準備原生環境 (Git)
         git_executable = find_and_set_git_executable()
+
+        # [v18.39 修正] 步驟 2: 安裝所有 Python 依賴
+        check_and_install_requirements()
+        
+        # [v18.39 修正] 步驟 3: 安全地導入第三方函式庫
+        import git
+        import requests
         
         update_comfyui_core(git_executable)
         
@@ -917,10 +886,10 @@ if __name__ == "__main__":
         
         upgrade_pytorch_in_comfyui()
         
-        # [v18.38 修正] 步驟 3: 安裝所有節點，這可能會安裝 diffusers 等庫
+        # [v18.39 修正] 步驟 4: 安裝所有節點
         check_and_clone_nodes(git_executable)
 
-        # [v18.38 修正] 步驟 4: 在節點和依賴安裝完畢後，才執行補丁
+        # [v18.39 修正] 步驟 5: 在節點和依賴安裝完畢後，才執行補丁
         patch_diffusers_import_error()
 
         check_and_download_models()
