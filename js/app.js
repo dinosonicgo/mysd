@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.15 (通知開關與全域通知修正): 為了實現可控的全域通知系統，重構了整個通知邏輯。1. `updateNotificationUI` 現在會先檢查瀏覽器權限，然後向後端 `/subscription_status` 查詢真實的啟用狀態，確保 UI 準確反映。2. `enable-notifications-btn` 按鈕的功能被擴展，現在可以處理「請求權限」、「啟用訂閱」和「禁用訂閱」三種情況。3. 新增 `unsubscribeFromPush` 函式，用於調用後端 `/unsubscribe` 端點來禁用通知，實現了完整的開關生命週期。4. `subscribeToPush` 現在調用更新後的 `/save_subscription` 端點。此修正確保了所有裝置的通知狀態都能被統一管理且使用者可以自由開關。
  * v17.14 (模型名稱顯示修正): 修正了在選擇模型或載入設定後，主介面按鈕上顯示的模型名稱包含完整資料夾路徑的問題。現在，無論模型位於哪個子目錄，介面上都只會顯示簡潔的檔案名稱，提升了使用者介面的清晰度。
  * v17.13 (設定還原修正): 修正了因非同步載入順序問題導致的採樣器 (Sampler) 與排程器 (Scheduler) 設定無法在頁面重整後正確還原的錯誤。透過調整 `reloadDataForActiveDevice` 函式的執行順序，確保在呼叫 `loadSettings` 應用已儲存的設定之前，所有相關的下拉選單（模型、採樣器等）都已透過 `Promise.all` 完全填充，從而徹底解決了競爭條件 (Race Condition) 問題，保證了所有設定的持久性。
- * v17.12 (FLUX & Pony 支援): 為了支援新的模型架構，重構了前端模型處理 logique。`fetchAndPopulateCheckpoints` 現在會根據模型檔名中的關鍵字（如 "flux", "pony"）自動判斷並附加 `architecture` 類型。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -289,11 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`已成功切換到 ${deviceId}。`);
     }
     
-    // [v17.13 修正] 函式功能: 為當前活動裝置重新載入所有資料，並確保執行順序正確
     async function reloadDataForActiveDevice() {
         console.log(`正在為裝置 ${userContext.device_id} 重新載入所有資料...`);
         
-        // 步驟 1: 並行獲取所有需要填充到下拉選單的資料
         await Promise.all([
             fetchAndPopulateCheckpoints(),
             fetchAndPopulateControlNetResources(),
@@ -301,10 +299,8 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndPopulateSamplers()
         ]);
     
-        // 步驟 2: 確保所有下拉選單都已填充後，才載入並應用儲存的設定
         await loadSettings();
     
-        // 步驟 3: 最後初始化歷史紀錄
         await initializeHistory();
     
         console.log("資料重新載入完成。");
@@ -598,7 +594,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (settings.model) {
                 comfyFormElements.model = settings.model;
-                // [v17.14 修正] 只顯示檔案名稱，而不是完整路徑
                 if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model.split(/[\\/]/).pop();
             }
             if (settings.model_architecture) {
@@ -975,7 +970,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 comfyFormElements.model = newModel;
                 comfyFormElements.model_architecture = newArchitecture;
-                // [v17.14 修正] 只顯示檔案名稱，而不是完整路徑
                 if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
                 if (bsModelSelectionModal) bsModelSelectionModal.hide();
                 await updateLoraListForModel(newModel);
@@ -1146,7 +1140,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 header = document.createElement('div');
                 header.className = 'history-date-header';
                 header.dataset.date = itemDate;
-                header.textContent = itemDate;
+                header.textContent = date;
                 comfyHistoryGrid.appendChild(header);
             }
             comfyHistoryGrid.appendChild(historyItemDiv);
@@ -1283,8 +1277,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetchWithUserContext('/api/comfyui/vapid_public_key');
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `無法獲取 VAPID 公鑰: ${response.statusText}`);
+                throw new Error(`無法獲取 VAPID 公鑰: ${response.statusText}`);
             }
             const data = await response.json();
             if (!data || !data.public_key) {
@@ -1293,11 +1286,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const applicationServerKey = urlBase64ToUint8Array(data.public_key);
             const subscription = await serviceWorkerRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-            await fetchWithUserContext('/api/comfyui/save_subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription) });
+            
+            await fetchWithUserContext('/api/comfyui/save_subscription', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(subscription) 
+            });
             console.log('已成功訂閱 Web Push 通知。');
-            await updateNotificationUI();
         } catch (error) {
             console.error('訂閱 Web Push 通知失敗:', error);
+        } finally {
+            await updateNotificationUI();
+        }
+    }
+    
+    async function unsubscribeFromPush() {
+        if (!serviceWorkerRegistration) return;
+        try {
+            const subscription = await serviceWorkerRegistration.pushManager.getSubscription();
+            if (subscription) {
+                await fetchWithUserContext('/api/comfyui/unsubscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: subscription.endpoint })
+                });
+                await subscription.unsubscribe();
+                console.log('已成功取消訂閱 Web Push 通知。');
+            }
+        } catch (error) {
+            console.error('取消訂閱 Web Push 通知失敗:', error);
+        } finally {
             await updateNotificationUI();
         }
     }
@@ -1309,27 +1327,53 @@ document.addEventListener('DOMContentLoaded', () => {
             notificationStatusBadge.className = 'badge bg-dark notification-status-badge';
             enableNotificationsBtn.disabled = true;
             enableNotificationsBtn.textContent = '瀏覽器不支援';
+            enableNotificationsBtn.style.display = 'block';
             return;
         }
+
         const permission = await navigator.permissions.query({ name: 'push', userVisibleOnly: true });
-        switch (permission.state) {
-            case 'granted':
+        if (permission.state === 'denied') {
+            notificationStatusBadge.textContent = '已封鎖';
+            notificationStatusBadge.className = 'badge bg-danger notification-status-badge';
+            enableNotificationsBtn.disabled = true;
+            enableNotificationsBtn.textContent = '權限已被封鎖';
+            enableNotificationsBtn.style.display = 'block';
+            return;
+        }
+
+        const subscription = await serviceWorkerRegistration.pushManager.getSubscription();
+        if (!subscription) {
+            notificationStatusBadge.textContent = '未啟用';
+            notificationStatusBadge.className = 'badge bg-secondary notification-status-badge';
+            enableNotificationsBtn.disabled = false;
+            enableNotificationsBtn.textContent = '啟用通知';
+            enableNotificationsBtn.className = 'btn btn-sm btn-outline-primary';
+            enableNotificationsBtn.style.display = 'block';
+            return;
+        }
+
+        try {
+            const response = await fetchWithUserContext(`/api/comfyui/subscription_status?endpoint=${encodeURIComponent(subscription.endpoint)}`);
+            const status = await response.json();
+            if (status.exists && status.is_active) {
                 notificationStatusBadge.textContent = '已啟用';
                 notificationStatusBadge.className = 'badge bg-success notification-status-badge';
-                enableNotificationsBtn.style.display = 'none';
-                break;
-            case 'denied':
-                notificationStatusBadge.textContent = '已封鎖';
-                notificationStatusBadge.className = 'badge bg-danger notification-status-badge';
-                enableNotificationsBtn.disabled = true;
-                enableNotificationsBtn.textContent = '已被封鎖';
-                break;
-            default:
-                notificationStatusBadge.textContent = '點擊啟用';
+                enableNotificationsBtn.disabled = false;
+                enableNotificationsBtn.textContent = '禁用通知';
+                enableNotificationsBtn.className = 'btn btn-sm btn-outline-warning';
+                enableNotificationsBtn.style.display = 'block';
+            } else {
+                notificationStatusBadge.textContent = '已禁用';
                 notificationStatusBadge.className = 'badge bg-warning text-dark notification-status-badge';
                 enableNotificationsBtn.disabled = false;
+                enableNotificationsBtn.textContent = '重新啟用';
+                enableNotificationsBtn.className = 'btn btn-sm btn-outline-success';
                 enableNotificationsBtn.style.display = 'block';
-                break;
+            }
+        } catch (error) {
+            console.error('檢查訂閱狀態失敗:', error);
+            notificationStatusBadge.textContent = '狀態未知';
+            notificationStatusBadge.className = 'badge bg-dark notification-status-badge';
         }
     }
 
@@ -1982,7 +2026,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.14');
+        console.log('應用程式已初始化 v17.15');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -1995,9 +2039,19 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (enableNotificationsBtn) {
             enableNotificationsBtn.addEventListener('click', async () => {
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') await subscribeToPush();
-                await updateNotificationUI();
+                const currentText = enableNotificationsBtn.textContent.trim();
+                
+                if (currentText === '禁用通知') {
+                    await unsubscribeFromPush();
+                } else { // 包含 "啟用通知" 和 "重新啟用"
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                        await subscribeToPush();
+                    } else {
+                        console.log('使用者拒絕了通知權限。');
+                        await updateNotificationUI();
+                    }
+                }
             });
         }
         
