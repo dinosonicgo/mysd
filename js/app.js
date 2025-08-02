@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.18 (資料隔離與批次刪除): 1. [BUG修復] 為配合後端的資料隔離策略，重構了 `fetchWithUserContext` 函式，不再向後端發送 `X-Device-ID` 請求標頭，讓後端自行判斷裝置ID。同時，確保所有資源（API、圖片、影片）的 URL 都基於動態的 `activeDeviceUrl` 變數生成，解決了 GM 模式下資源指向錯誤的問題。 2. [功能新增] 完整實作了批次刪除功能，為 `history-batch-delete-btn` 按鈕添加了事件處理邏輯，使其能夠呼叫後端新增的 `/history/batch-delete` 端點，並在成功後更新前端UI，補全了歷史紀錄管理的閉環。
  * v17.17 (ControlNet 中文化): 為了提升使用者體驗，修改了 `fetchAndPopulateControlNetResources` 函式。現在它能夠正確解析從後端 API 傳來的包含 `name` (中文) 和 `value` (英文) 的物件列表。在填充下拉選單時，會將選項的顯示文字設為中文名稱，而將提交值設為 ComfyUI 節點所需的英文內部值，實現了介面的中文化同時保持後端相容性。
  * v17.16 (局部修圖預覽與流程修正): 為了解決繪製遮罩後前端UI不更新的問題，重構了遮罩處理邏輯。1. 新增 `handleDrawnMask` 函式，該函式在遮罩繪製完成後，會立即使用 `URL.createObjectURL` 在前端生成預覽並更新UI，提供即時反饋。2. 將遮罩檔案的伺服器上傳過程改為在背景執行，與UI更新解耦，確保了即使上傳較慢，使用者也能立刻看到自己繪製的結果。3. 此修正從根本上解決了因缺少即時反饋導致的使用者體驗不佳問題，並確保了遮罩資料能被可靠地傳遞給後端。
- * v17.15 (通知開關與全域通知修正): 為了實現可控的全域通知系統，重構了整個通知邏輯。1. `updateNotificationUI` 現在會先檢查瀏覽器權限，然後向後端 `/subscription_status` 查詢真實的啟用狀態，確保 UI 準確反映。2. `enable-notifications-btn` 按鈕的功能被擴展，現在可以處理「請求權限」、「啟用訂閱」和「禁用訂閱」三種情況。3. 新增 `unsubscribeFromPush` 函式，用於調用後端 `/unsubscribe` 端點來禁用通知，實現了完整的開關生命週期。4. `subscribeToPush` 現在調用更新後的 `/save_subscription` 端點。此修正確保了所有裝置的通知狀態都能被統一管理且使用者可以自由開關。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -215,8 +215,9 @@ document.addEventListener('DOMContentLoaded', () => {
     historyLoadingIndicator.style.display = 'none';
 
     // --- 狀態變數 ---
-    let userContext = { user_type: 'local', device_id: 'local' };
+    let userContext = { user_type: 'local' }; // [v17.18 修正] 移除 device_id，後端自行決定
     let activeDeviceUrl = window.location.origin;
+    let localDeviceId = 'local_pc'; // 本地裝置ID的預設值
     let sharedConfig = { devices: {} };
     let img2imgState = { source_image: null, inpaint_mask: null, source_image_data: null };
     let controlnetState = { controlnet_image: null };
@@ -262,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const fullUrl = new URL(path, activeDeviceUrl).href;
         const headers = new Headers(options.headers || {});
         headers.append('X-User-Type', userContext.user_type);
-        headers.append('X-Device-ID', userContext.device_id);
+        // [v17.18 修正] 移除 X-Device-ID 標頭，後端將使用自己的 ID
         options.headers = headers;
         return fetch(fullUrl, options);
     }
@@ -275,11 +276,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         console.log(`正在切換到裝置: ${deviceId}`);
-        userContext.device_id = deviceId;
+        // [v17.18 修正] GM 模式下，device_id 只是個標籤，真實 ID 由後端決定
+        // userContext.device_id 不再需要，但我們仍需更新 UI
+        
         activeDeviceUrl = sharedConfig.devices[deviceId].url;
         localStorage.setItem('gm_last_device', deviceId);
         
-        updateDeviceSelectorUI();
+        updateDeviceSelectorUI(deviceId);
         
         document.body.style.cursor = 'wait';
         
@@ -290,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     async function reloadDataForActiveDevice() {
-        console.log(`正在為裝置 ${userContext.device_id} 重新載入所有資料...`);
+        console.log(`正在為當前裝置 ${activeDeviceUrl} 重新載入所有資料...`);
         
         await Promise.all([
             fetchAndPopulateCheckpoints(),
@@ -323,36 +326,47 @@ document.addEventListener('DOMContentLoaded', () => {
             userContext.user_type = 'local';
             localStorage.removeItem('user_type');
             localStorage.removeItem('gm_last_device');
+            // 獲取本地裝置ID
+            try {
+                const deviceResponse = await fetchWithUserContext('/api/comfyui/device_id');
+                const data = await deviceResponse.json();
+                localDeviceId = data.device_id || 'local_pc';
+            } catch (e) {
+                console.error("無法獲取本地 device_id", e);
+            }
+            updateDeviceSelectorUI(localDeviceId);
+            await reloadDataForActiveDevice();
+
         } else {
             userContext.user_type = localStorage.getItem('user_type') || 'local';
-        }
-        
-        if (userContext.user_type === 'gm') {
-            const lastDevice = localStorage.getItem('gm_last_device');
-            const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
-            
-            let targetDevice = null;
-            if (lastDevice && onlineDevices.includes(lastDevice)) {
-                targetDevice = lastDevice;
-            } else if (onlineDevices.length > 0) {
-                targetDevice = onlineDevices[0];
-            }
+            if (userContext.user_type === 'gm') {
+                const lastDevice = localStorage.getItem('gm_last_device');
+                const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
+                
+                let targetDevice = null;
+                if (lastDevice && onlineDevices.includes(lastDevice)) {
+                    targetDevice = lastDevice;
+                } else if (onlineDevices.length > 0) {
+                    targetDevice = onlineDevices[0];
+                }
 
-            if (targetDevice) {
-                await switchDevice(targetDevice);
+                if (targetDevice) {
+                    await switchDevice(targetDevice);
+                } else {
+                    updateDeviceSelectorUI(null);
+                    alert('目前沒有任何遠端裝置在線。');
+                }
             } else {
-                updateDeviceSelectorUI();
-                alert('目前沒有任何遠端裝置在線。');
+                // 如果是透過 GitHub Pages 訪問但未登入 GM，則應顯示錯誤或引導
+                 if(userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
+                 if(deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
+                 // 禁用主要功能
+                 if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
             }
-        } else {
-            userContext.device_id = localStorage.getItem('device_id') || 'local_pc';
-            activeDeviceUrl = window.location.origin;
-            updateDeviceSelectorUI();
-            await reloadDataForActiveDevice();
         }
     }
 
-    function updateDeviceSelectorUI() {
+    function updateDeviceSelectorUI(currentDeviceId) {
         if (!userStatusDisplay || !gmLoginIcon) return;
     
         if (userContext.user_type === 'gm') {
@@ -360,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
             gmLoginIcon.title = '已登入為 GM - 點擊登出';
             
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'block';
-            if (userStatusDisplay) userStatusDisplay.textContent = `GM @ ${userContext.device_id || '未選擇'}`;
+            if (userStatusDisplay) userStatusDisplay.textContent = `GM @ ${currentDeviceId || '未選擇'}`;
             
             if (deviceSelectionList) {
                 const deviceIds = Object.keys(sharedConfig.devices);
@@ -374,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         const li = document.createElement('li');
                         const a = document.createElement('a');
-                        a.className = `dropdown-item device-select-btn ${userContext.device_id === id ? 'active' : ''}`;
+                        a.className = `dropdown-item device-select-btn ${currentDeviceId === id ? 'active' : ''}`;
                         a.href = '#';
                         a.dataset.device = id;
                         a.innerHTML = `${id} <span class="badge bg-${isOnline ? 'success' : 'secondary'} float-end">${isOnline ? '在線' : '離線'}</span>`;
@@ -389,14 +403,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.addEventListener('click', async (e) => {
                         e.preventDefault();
                         const newDeviceId = e.target.closest('.device-select-btn').dataset.device;
-                        if (userContext.device_id !== newDeviceId) {
-                            await switchDevice(newDeviceId);
-                        }
+                        await switchDevice(newDeviceId);
                     });
                 });
             }
         } else {
-            userStatusDisplay.textContent = '本地使用者';
+            userStatusDisplay.textContent = `本地裝置: ${localDeviceId}`;
             gmLoginIcon.innerHTML = '<i class="bi bi-lock"></i>';
             gmLoginIcon.title = 'GM 登入';
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
@@ -2051,7 +2063,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.17');
+        console.log('應用程式已初始化 v17.18');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -2328,23 +2340,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 toggleSelectionMode(false);
             }
         });
-        if (historyBatchDeleteBtn) historyBatchDeleteBtn.addEventListener('click', async () => {
-            if (selectedItems.size === 0) return;
-            if (confirm(`確定要刪除選中的 ${selectedItems.size} 個項目嗎？`)) {
-                const idsToDelete = Array.from(selectedItems);
-                await fetchWithUserContext('/api/comfyui/history/batch-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: idsToDelete }) });
-                const deletedIds = new Set(idsToDelete);
-                comfyHistoryGrid.querySelectorAll('.history-item.is-selected').forEach(el => {
-                    const header = el.previousElementSibling;
-                    el.remove();
-                    if (header && header.classList.contains('history-date-header') && (!header.nextElementSibling || !header.nextElementSibling.classList.contains('history-item'))) {
-                        header.remove();
+        
+        // [v17.18 新增] 批次刪除事件監聽器
+        if (historyBatchDeleteBtn) {
+            historyBatchDeleteBtn.addEventListener('click', async () => {
+                if (selectedItems.size === 0) return;
+                if (confirm(`確定要刪除選中的 ${selectedItems.size} 個項目嗎？`)) {
+                    const idsToDelete = Array.from(selectedItems);
+                    try {
+                        const response = await fetchWithUserContext('/api/comfyui/history/batch-delete', {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ ids: idsToDelete })
+                        });
+                        const result = await response.json();
+                        if (!response.ok) {
+                            throw new Error(result.detail || '批次刪除失敗');
+                        }
+                        
+                        console.log(result.message);
+                        if (result.details && result.details.errors && result.details.errors.length > 0) {
+                            alert(`部分項目刪除失敗:\n${result.details.errors.join('\n')}`);
+                        }
+
+                        const deletedIds = new Set(idsToDelete);
+                        comfyHistoryGrid.querySelectorAll('.history-item.is-selected').forEach(el => {
+                            const header = el.previousElementSibling;
+                            el.remove();
+                            if (header && header.classList.contains('history-date-header') && (!header.nextElementSibling || !header.nextElementSibling.classList.contains('history-item'))) {
+                                header.remove();
+                            }
+                        });
+                        currentHistoryList = currentHistoryList.filter(item => !deletedIds.has(item.id));
+                        toggleSelectionMode(false);
+
+                    } catch (error) {
+                         alert(`刪除時發生錯誤: ${error.message}`);
                     }
-                });
-                currentHistoryList = currentHistoryList.filter(item => !deletedIds.has(item.id));
-                toggleSelectionMode(false);
-            }
-        });
+                }
+            });
+        }
+
         if (historyBatchDownloadBtn) historyBatchDownloadBtn.addEventListener('click', async () => {
             if (selectedItems.size === 0) return;
             const zip = new JSZip();
