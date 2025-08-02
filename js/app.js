@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.16 (局部修圖預覽與流程修正): 為了解決繪製遮罩後前端UI不更新的問題，重構了遮罩處理邏輯。1. 新增 `handleDrawnMask` 函式，該函式在遮罩繪製完成後，會立即使用 `URL.createObjectURL` 在前端生成預覽並更新UI，提供即時反饋。2. 將遮罩檔案的伺服器上傳過程改為在背景執行，與UI更新解耦，確保了即使上傳較慢，使用者也能立刻看到自己繪製的結果。3. 此修正從根本上解決了因缺少即時反饋導致的使用者體驗不佳問題，並確保了遮罩資料能被可靠地傳遞給後端。
  * v17.15 (通知開關與全域通知修正): 為了實現可控的全域通知系統，重構了整個通知邏輯。1. `updateNotificationUI` 現在會先檢查瀏覽器權限，然後向後端 `/subscription_status` 查詢真實的啟用狀態，確保 UI 準確反映。2. `enable-notifications-btn` 按鈕的功能被擴展，現在可以處理「請求權限」、「啟用訂閱」和「禁用訂閱」三種情況。3. 新增 `unsubscribeFromPush` 函式，用於調用後端 `/unsubscribe` 端點來禁用通知，實現了完整的開關生命週期。4. `subscribeToPush` 現在調用更新後的 `/save_subscription` 端點。此修正確保了所有裝置的通知狀態都能被統一管理且使用者可以自由開關。
  * v17.14 (模型名稱顯示修正): 修正了在選擇模型或載入設定後，主介面按鈕上顯示的模型名稱包含完整資料夾路徑的問題。現在，無論模型位於哪個子目錄，介面上都只會顯示簡潔的檔案名稱，提升了使用者介面的清晰度。
- * v17.13 (設定還原修正): 修正了因非同步載入順序問題導致的採樣器 (Sampler) 與排程器 (Scheduler) 設定無法在頁面重整後正確還原的錯誤。透過調整 `reloadDataForActiveDevice` 函式的執行順序，確保在呼叫 `loadSettings` 應用已儲存的設定之前，所有相關的下拉選單（模型、採樣器等）都已透過 `Promise.all` 完全填充，從而徹底解決了競爭條件 (Race Condition) 問題，保證了所有設定的持久性。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1866,6 +1866,33 @@ document.addEventListener('DOMContentLoaded', () => {
         [lastX, lastY] = [currentPos.x, currentPos.y];
     }
 
+    // [v17.16 修正] 新增函式，分離UI更新和背景上傳
+    async function handleDrawnMask(blob) {
+        // 1. 立即更新UI以提供反饋
+        const dataUrl = URL.createObjectURL(blob);
+        if (maskPreview) maskPreview.src = dataUrl;
+        if (maskUploadArea) maskUploadArea.style.display = 'none';
+        if (maskPreviewContainer) maskPreviewContainer.style.display = 'block';
+        if (maskFilename) maskFilename.textContent = 'drawn_mask.png';
+
+        // 2. 在背景執行上傳
+        const maskFile = new File([blob], "drawn_mask.png", { type: "image/png" });
+        try {
+            const filename = await uploadImageToServer(maskFile);
+            if (filename) {
+                img2imgState.inpaint_mask = filename;
+                console.log('繪製的遮罩已成功上傳:', filename);
+            } else {
+                throw new Error('伺服器未返回有效的檔名。');
+            }
+        } catch (error) {
+            alert(`繪製的遮罩上傳失敗: ${error.message}`);
+            // 如果上傳失敗，重置UI
+            resetFileUploadUI(img2imgState, 'inpaint_mask', maskUploadArea, maskPreviewContainer, maskPreview, maskFilename, null, '點擊上傳遮罩', '白色區域為重繪部分');
+        }
+    }
+
+    // [v17.16 修正] 修改原始函式以呼叫新的處理器
     async function generateMaskAndUpload() {
         const originalImage = new Image();
         originalImage.onload = async () => {
@@ -1874,25 +1901,31 @@ document.addEventListener('DOMContentLoaded', () => {
             tempCanvas.height = originalImage.height;
             const tempCtx = tempCanvas.getContext('2d');
 
+            // 建立一個純黑色的背景
             tempCtx.fillStyle = 'black';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-            tempCtx.drawImage(inpaintCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
-
-            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-            const data = imageData.data;
+            // 將使用者繪製的內容（紅色半透明）轉換為純白色並繪製到黑色背景上
+            const drawnCanvas = inpaintCanvas;
+            const drawnCtx = drawnCanvas.getContext('2d');
+            const drawnImageData = drawnCtx.getImageData(0, 0, drawnCanvas.width, drawnCanvas.height);
+            const data = drawnImageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                if (data[i+3] > 0) {
-                    data[i] = 255;
-                    data[i+1] = 255;
-                    data[i+2] = 255;
+                // 只要alpha通道不是完全透明，就將其設為純白色
+                if (data[i + 3] > 0) {
+                    data[i] = 255;     // R
+                    data[i + 1] = 255; // G
+                    data[i + 2] = 255; // B
+                    data[i + 3] = 255; // A (不透明)
                 }
             }
-            tempCtx.putImageData(imageData, 0, 0);
+            drawnCtx.putImageData(drawnImageData, 0, 0);
+
+            // 將處理過的、純白色的遮罩繪製到最終的畫布上
+            tempCtx.drawImage(drawnCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
             
             tempCanvas.toBlob(async (blob) => {
-                const maskFile = new File([blob], "drawn_mask.png", { type: "image/png" });
-                await handleFileUpload(maskFile, img2imgState, maskPreview, maskUploadArea, maskPreviewContainer, maskFilename, null, 'inpaint_mask');
+                await handleDrawnMask(blob);
                 if (bsInpaintCanvasModal) bsInpaintCanvasModal.hide();
             }, 'image/png');
         };
@@ -2026,7 +2059,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.15');
+        console.log('應用程式已初始化 v17.16');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -2389,7 +2422,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (inpaintCanvas) {
             inpaintCtx = inpaintCanvas.getContext('2d');
-            inpaintCtx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+            inpaintCtx.fillStyle = 'rgba(255, 255, 255, 1)'; // 改為純白色
 
             const startDrawing = (e) => {
                 isDrawing = true;
