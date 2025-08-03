@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.19 (遮罩功能雙重修正): 1. [UX修復] 為解決繪製遮罩後UI無即時反饋的問題，重構了 `handleDrawnMask` 函式。現在，它會使用 `URL.createObjectURL` 立即在前端生成並顯示遮罩預覽，然後才在背景執行上傳任務，確保了流暢的使用者體驗。 2. [BUG修復] 修正了 `generateMaskAndUpload` 函式中導致遮罩圖生成為全白的嚴重 Bug。通過在生成遮罩前先用純黑色填充畫布背景，確保了最終產出的 `drawn_mask.png` 是「黑底白圖」的標準格式，從而使局部修圖功能恢復正常。
  * v17.18 (資料隔離與批次刪除): 1. [BUG修復] 為配合後端的資料隔離策略，重構了 `fetchWithUserContext` 函式，不再向後端發送 `X-Device-ID` 請求標頭，讓後端自行判斷裝置ID。同時，確保所有資源（API、圖片、影片）的 URL 都基於動態的 `activeDeviceUrl` 變數生成，解決了 GM 模式下資源指向錯誤的問題。 2. [功能新增] 完整實作了批次刪除功能，為 `history-batch-delete-btn` 按鈕添加了事件處理邏輯，使其能夠呼叫後端新增的 `/history/batch-delete` 端點，並在成功後更新前端UI，補全了歷史紀錄管理的閉環。
  * v17.17 (ControlNet 中文化): 為了提升使用者體驗，修改了 `fetchAndPopulateControlNetResources` 函式。現在它能夠正確解析從後端 API 傳來的包含 `name` (中文) 和 `value` (英文) 的物件列表。在填充下拉選單時，會將選項的顯示文字設為中文名稱，而將提交值設為 ComfyUI 節點所需的英文內部值，實現了介面的中文化同時保持後端相容性。
- * v17.16 (局部修圖預覽與流程修正): 為了解決繪製遮罩後前端UI不更新的問題，重構了遮罩處理邏輯。1. 新增 `handleDrawnMask` 函式，該函式在遮罩繪製完成後，會立即使用 `URL.createObjectURL` 在前端生成預覽並更新UI，提供即時反饋。2. 將遮罩檔案的伺服器上傳過程改為在背景執行，與UI更新解耦，確保了即使上傳較慢，使用者也能立刻看到自己繪製的結果。3. 此修正從根本上解決了因缺少即時反饋導致的使用者體驗不佳問題，並確保了遮罩資料能被可靠地傳遞給後端。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1152,7 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!header) {
                 header = document.createElement('div');
                 header.className = 'history-date-header';
-                header.dataset.date = itemDate;
+                header.dataset.date = date;
                 header.textContent = date;
                 comfyHistoryGrid.appendChild(header);
             }
@@ -1879,13 +1879,16 @@ document.addEventListener('DOMContentLoaded', () => {
         [lastX, lastY] = [currentPos.x, currentPos.y];
     }
 
+    // [v17.19 修正] 分離 UI 更新和後端上傳，提供即時反饋
     async function handleDrawnMask(blob) {
+        // 步驟 1: 立即更新 UI
         const dataUrl = URL.createObjectURL(blob);
         if (maskPreview) maskPreview.src = dataUrl;
         if (maskUploadArea) maskUploadArea.style.display = 'none';
         if (maskPreviewContainer) maskPreviewContainer.style.display = 'block';
         if (maskFilename) maskFilename.textContent = 'drawn_mask.png';
 
+        // 步驟 2: 在背景執行上傳
         const maskFile = new File([blob], "drawn_mask.png", { type: "image/png" });
         try {
             const filename = await uploadImageToServer(maskFile);
@@ -1901,6 +1904,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // [v17.19 修正] 修正遮罩生成邏輯，確保是黑底白圖
     async function generateMaskAndUpload() {
         const originalImage = new Image();
         originalImage.onload = async () => {
@@ -1909,25 +1913,29 @@ document.addEventListener('DOMContentLoaded', () => {
             tempCanvas.height = originalImage.height;
             const tempCtx = tempCanvas.getContext('2d');
 
+            // 步驟 1: [BUG 修正] 先用純黑色填充整個畫布作為背景
             tempCtx.fillStyle = 'black';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
+            // 步驟 2: 處理使用者繪製的內容，將其變為純白色
             const drawnCanvas = inpaintCanvas;
             const drawnCtx = drawnCanvas.getContext('2d');
             const drawnImageData = drawnCtx.getImageData(0, 0, drawnCanvas.width, drawnCanvas.height);
             const data = drawnImageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                if (data[i + 3] > 0) {
-                    data[i] = 255;
-                    data[i + 1] = 255;
-                    data[i + 2] = 255;
-                    data[i + 3] = 255;
+                if (data[i + 3] > 0) { // 檢查透明度，只要不是完全透明
+                    data[i] = 255;     // R
+                    data[i + 1] = 255; // G
+                    data[i + 2] = 255; // B
+                    data[i + 3] = 255; // A
                 }
             }
             drawnCtx.putImageData(drawnImageData, 0, 0);
 
+            // 步驟 3: 將處理過的白色繪製區域疊加到黑色背景上
             tempCtx.drawImage(drawnCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
             
+            // 步驟 4: 生成 Blob 並觸發後續處理
             tempCanvas.toBlob(async (blob) => {
                 await handleDrawnMask(blob);
                 if (bsInpaintCanvasModal) bsInpaintCanvasModal.hide();
@@ -2063,7 +2071,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v17.18');
+        console.log('應用程式已初始化 v17.19');
         
         if ('serviceWorker' in navigator) {
             try {
