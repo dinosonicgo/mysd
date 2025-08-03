@@ -1,9 +1,9 @@
 // static/js/app.js
 
 /**
+ * v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
+ * v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
  * v17.19 (遮罩功能雙重修正): 1. [UX修復] 為解決繪製遮罩後UI無即時反饋的問題，重構了 `handleDrawnMask` 函式。現在，它會使用 `URL.createObjectURL` 立即在前端生成並顯示遮罩預覽，然後才在背景執行上傳任務，確保了流暢的使用者體驗。 2. [BUG修復] 修正了 `generateMaskAndUpload` 函式中導致遮罩圖生成為全白的嚴重 Bug。通過在生成遮罩前先用純黑色填充畫布背景，確保了最終產出的 `drawn_mask.png` 是「黑底白圖」的標準格式，從而使局部修圖功能恢復正常。
- * v17.18 (資料隔離與批次刪除): 1. [BUG修復] 為配合後端的資料隔離策略，重構了 `fetchWithUserContext` 函式，不再向後端發送 `X-Device-ID` 請求標頭，讓後端自行判斷裝置ID。同時，確保所有資源（API、圖片、影片）的 URL 都基於動態的 `activeDeviceUrl` 變數生成，解決了 GM 模式下資源指向錯誤的問題。 2. [功能新增] 完整實作了批次刪除功能，為 `history-batch-delete-btn` 按鈕添加了事件處理邏輯，使其能夠呼叫後端新增的 `/history/batch-delete` 端點，並在成功後更新前端UI，補全了歷史紀錄管理的閉環。
- * v17.17 (ControlNet 中文化): 為了提升使用者體驗，修改了 `fetchAndPopulateControlNetResources` 函式。現在它能夠正確解析從後端 API 傳來的包含 `name` (中文) 和 `value` (英文) 的物件列表。在填充下拉選單時，會將選項的顯示文字設為中文名稱，而將提交值設為 ComfyUI 節點所需的英文內部值，實現了介面的中文化同時保持後端相容性。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -198,6 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
     const modelFilterCheckboxes = document.querySelectorAll('.model-filter-checkbox');
+    const dependencyDownloadModalEl = getById('dependency-download-modal');
+    let bsDependencyDownloadModal = null;
 
     // --- 元素選擇器 (GM 登入) ---
     const gmLoginIcon = getById('gm-login-icon');
@@ -215,9 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
     historyLoadingIndicator.style.display = 'none';
 
     // --- 狀態變數 ---
-    let userContext = { user_type: 'local' }; // [v17.18 修正] 移除 device_id，後端自行決定
+    let userContext = { user_type: 'local' };
     let activeDeviceUrl = window.location.origin;
-    let localDeviceId = 'local_pc'; // 本地裝置ID的預設值
+    let localDeviceId = 'local_pc';
     let sharedConfig = { devices: {} };
     let img2imgState = { source_image: null, inpaint_mask: null, source_image_data: null };
     let controlnetState = { controlnet_image: null };
@@ -236,6 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let hasMoreHistory = true;
     const GM_PASSWORD = "781111";
     const GITHUB_CONFIG_URL = 'https://dinosonicgo.github.io/mysd/config.json';
+    let dependencyModelsStatus = {};
 
     // 繪圖遮罩狀態變數
     let isDrawing = false;
@@ -263,11 +266,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const fullUrl = new URL(path, activeDeviceUrl).href;
         const headers = new Headers(options.headers || {});
         headers.append('X-User-Type', userContext.user_type);
-        // [v17.18 修正] 移除 X-Device-ID 標頭，後端將使用自己的 ID
         options.headers = headers;
         return fetch(fullUrl, options);
     }
     
+    // --- [新增] 核心函式: 即時檢測裝置在線狀態 ---
+    async function checkDeviceStatus(device) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超時
+
+        try {
+            // 使用一個輕量的 API 端點作為健康檢查
+            const response = await fetch(new URL('/api/comfyui/device_id', device.url).href, {
+                signal: controller.signal,
+                cache: 'no-store' // 確保是即時請求
+            });
+            clearTimeout(timeoutId);
+            return response.ok ? 'online' : 'offline';
+        } catch (error) {
+            clearTimeout(timeoutId);
+            // 忽略裝置名稱，因為它可能不存在
+            // console.warn(`裝置 ${device.url} 似乎離線:`, error.name);
+            return 'offline';
+        }
+    }
+
     // --- 核心函式: 裝置切換與資料載入 ---
     async function switchDevice(deviceId) {
         if (!sharedConfig.devices[deviceId] || sharedConfig.devices[deviceId].status !== 'online') {
@@ -276,8 +299,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         console.log(`正在切換到裝置: ${deviceId}`);
-        // [v17.18 修正] GM 模式下，device_id 只是個標籤，真實 ID 由後端決定
-        // userContext.device_id 不再需要，但我們仍需更新 UI
         
         activeDeviceUrl = sharedConfig.devices[deviceId].url;
         localStorage.setItem('gm_last_device', deviceId);
@@ -299,7 +320,8 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndPopulateCheckpoints(),
             fetchAndPopulateControlNetResources(),
             fetchAndPopulateVideoModels(),
-            fetchAndPopulateSamplers()
+            fetchAndPopulateSamplers(),
+            fetchDependencyStatus()
         ]);
     
         await loadSettings();
@@ -314,6 +336,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
             if (!response.ok) throw new Error('無法從 GitHub 獲取共享設定檔。');
             sharedConfig = await response.json();
+
+            // [新增] 即時狀態檢測
+            console.log("正在並行檢測所有裝置的即時狀態...");
+            const statusChecks = Object.entries(sharedConfig.devices).map(async ([id, device]) => {
+                const status = await checkDeviceStatus(device);
+                sharedConfig.devices[id].status = status;
+            });
+            await Promise.all(statusChecks);
+            console.log("裝置即時狀態檢測完成。");
+
         } catch (error) {
             console.error(error);
             if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
@@ -326,7 +358,6 @@ document.addEventListener('DOMContentLoaded', () => {
             userContext.user_type = 'local';
             localStorage.removeItem('user_type');
             localStorage.removeItem('gm_last_device');
-            // 獲取本地裝置ID
             try {
                 const deviceResponse = await fetchWithUserContext('/api/comfyui/device_id');
                 const data = await deviceResponse.json();
@@ -357,10 +388,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('目前沒有任何遠端裝置在線。');
                 }
             } else {
-                // 如果是透過 GitHub Pages 訪問但未登入 GM，則應顯示錯誤或引導
                  if(userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
                  if(deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
-                 // 禁用主要功能
                  if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
             }
         }
@@ -382,9 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (deviceIds.length > 0) {
                     deviceIds.forEach(id => {
                         const device = sharedConfig.devices[id];
-                        const lastSeen = new Date(device.timestamp * 1000);
-                        const isOnline = (new Date() - lastSeen) < 5 * 60 * 1000;
-                        device.status = isOnline ? 'online' : 'offline';
+                        // [修正] 不再使用時間戳判斷，直接使用檢測後的 status
+                        const isOnline = device.status === 'online';
 
                         const li = document.createElement('li');
                         const a = document.createElement('a');
@@ -817,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
                 if (modelNameLower.includes('flux')) {
-                    model.architecture = 'flux';
+                    model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
                 } else if (modelNameLower.includes('pony')) {
                     model.architecture = 'pony';
                 } else if (modelNameLower.includes('sd3')) {
@@ -974,18 +1002,12 @@ document.addEventListener('DOMContentLoaded', () => {
         card.append(imgContainer, title);
         
         if (type === 'model') {
-            card.addEventListener('click', async () => {
-                const newModel = item.name;
-                const newArchitecture = item.architecture;
-                if (comfyFormElements.model !== newModel) {
-                    comfyFormElements.loras = [];
-                    renderSelectedLoras();
+            card.addEventListener('click', () => {
+                if (item.architecture.startsWith('flux')) {
+                    handleFluxModelSelection(item);
+                } else {
+                    selectModel(item);
                 }
-                comfyFormElements.model = newModel;
-                comfyFormElements.model_architecture = newArchitecture;
-                if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
-                if (bsModelSelectionModal) bsModelSelectionModal.hide();
-                await updateLoraListForModel(newModel);
             });
         } else if (type === 'lora') {
             const checkbox = document.createElement('input');
@@ -1005,6 +1027,20 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         return card;
+    }
+
+    async function selectModel(item) {
+        const newModel = item.name;
+        const newArchitecture = item.architecture;
+        if (comfyFormElements.model !== newModel) {
+            comfyFormElements.loras = [];
+            renderSelectedLoras();
+        }
+        comfyFormElements.model = newModel;
+        comfyFormElements.model_architecture = newArchitecture;
+        if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
+        if (bsModelSelectionModal) bsModelSelectionModal.hide();
+        await updateLoraListForModel(newModel);
     }
 
     function renderSelectedLoras() {
@@ -2070,8 +2106,120 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function fetchDependencyStatus() {
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/dependency_status');
+            if (!response.ok) throw new Error('無法獲取依賴模型狀態');
+            dependencyModelsStatus = await response.json();
+        } catch (error) {
+            console.error('獲取依賴模型狀態失敗:', error);
+        }
+    }
+
+    async function handleFluxModelSelection(item) {
+        let requiredModelKey = null;
+        if (item.architecture === 'flux_safetensors') {
+            requiredModelKey = 't5xxl_fp16.safetensors';
+        } else if (item.architecture === 'flux_gguf') {
+            requiredModelKey = 't5xxl_fp8_e4m3fn.safetensors';
+        }
+
+        if (requiredModelKey && dependencyModelsStatus[requiredModelKey] && !dependencyModelsStatus[requiredModelKey].exists) {
+            const modelInfo = dependencyModelsStatus[requiredModelKey];
+            const confirmation = confirm(
+                `您選擇的 FLUX 模型需要一個額外的組件：\n\n` +
+                `檔案: ${requiredModelKey}\n` +
+                `大小: 約 ${modelInfo.size_gb} GB\n\n` +
+                `這個組件是 FLUX 正常運作所必需的。您是否同意下載？`
+            );
+
+            if (confirmation) {
+                await startDependencyDownload(requiredModelKey, item);
+            }
+        } else {
+            await selectModel(item);
+        }
+    }
+
+    async function startDependencyDownload(modelKey, originalSelectedItem) {
+        if (bsModelSelectionModal) bsModelSelectionModal.hide();
+        if (bsDependencyDownloadModal) bsDependencyDownloadModal.show();
+
+        const statusDiv = document.getElementById('dependency-download-status');
+        const closeBtn = document.getElementById('dependency-download-close-btn');
+        if(closeBtn) closeBtn.disabled = true;
+        if(statusDiv) statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載請求...</div>';
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/download_dependency', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model_key: modelKey })
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.task_id) {
+                throw new Error(result.detail || '提交下載請求失敗');
+            }
+
+            const taskId = result.task_id;
+            const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
+            const wsHost = new URL(activeDeviceUrl).host;
+            const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/status/${taskId}`;
+            
+            const ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                if(statusDiv) statusDiv.innerHTML = '<div class="alert alert-info">已連接到伺服器，等待下載開始...</div>';
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                const data = message.data;
+                switch (message.type) {
+                    case 'progress':
+                        const percent = data.progress;
+                        const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
+                        const totalMB = (data.total / 1024 / 1024).toFixed(2);
+                        if(statusDiv) statusDiv.innerHTML = `
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: ${percent}%;">${percent}%</div>
+                            </div>
+                            <div class="text-center small mt-1">${downloadedMB} MB / ${totalMB} MB</div>`;
+                        break;
+                    case 'complete':
+                        if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                        if(closeBtn) closeBtn.disabled = false;
+                        dependencyModelsStatus[modelKey].exists = true;
+                        ws.close();
+                        // 自動選擇模型
+                        setTimeout(async () => {
+                            if (bsDependencyDownloadModal) bsDependencyDownloadModal.hide();
+                            await selectModel(originalSelectedItem);
+                        }, 1500);
+                        break;
+                    case 'error':
+                        if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${data.message}</div>`;
+                        if(closeBtn) closeBtn.disabled = false;
+                        ws.close();
+                        break;
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('依賴模型下載 WebSocket 錯誤:', error);
+                if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">無法連接到下載進度伺服器。</div>`;
+                if(closeBtn) closeBtn.disabled = false;
+            };
+
+        } catch (error) {
+            if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
+            if(closeBtn) closeBtn.disabled = false;
+        }
+    }
+
     async function initialize() {
-        console.log('應用程式已初始化 v17.19');
+        console.log('應用程式已初始化 v17.21');
         
         if ('serviceWorker' in navigator) {
             try {
@@ -2122,6 +2270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (inpaintCanvasModalEl) bsInpaintCanvasModal = new bootstrap.Modal(inpaintCanvasModalEl);
+        if (dependencyDownloadModalEl) bsDependencyDownloadModal = new bootstrap.Modal(dependencyDownloadModalEl);
         const gmLoginModalEl = getById('gm-login-modal');
         if (gmLoginModalEl) bsGmLoginModal = new bootstrap.Modal(gmLoginModalEl);
 
@@ -2349,7 +2498,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // [v17.18 新增] 批次刪除事件監聽器
         if (historyBatchDeleteBtn) {
             historyBatchDeleteBtn.addEventListener('click', async () => {
                 if (selectedItems.size === 0) return;
