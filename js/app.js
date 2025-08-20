@@ -1,43 +1,28 @@
 // static/js/app.js
 
 /**
- * v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
  * v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
  * v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
+ * v17.19 (遮罩功能雙重修正): 1. [UX修復] 為解決繪製遮罩後UI無即時反饋的問題，重構了 `handleDrawnMask` 函式。現在，它會使用 `URL.createObjectURL` 立即在前端生成並顯示遮罩預覽，然後才在背景執行上傳任務，確保了流暢的使用者體驗。 2. [BUG修復] 修正了 `generateMaskAndUpload` 函式中導致遮罩圖生成為全白的嚴重 Bug。通過在生成遮罩前先用純黑色填充畫布背景，確保了最終產出的 `drawn_mask.png` 是「黑底白圖」的標準格式，從而使局部修圖功能恢復正常。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
-    const navChat = getById('nav-chat');
+    const navGemini = getById('nav-gemini');
     const navComfyUI = getById('nav-comfyui');
-    const chatPage = getById('chat-page');
+    const geminiPage = getById('gemini-page');
     const comfyUIPage = getById('comfyui-page');
-    const pages = [chatPage, comfyUIPage];
-    const navLinks = [navChat, navComfyUI];
+    const pages = [geminiPage, comfyUIPage];
+    const navLinks = [navGemini, navComfyUI];
 
-    // --- 元素選擇器 (AI 聊天) ---
-    const chatStartBtn = getById('chat-start-btn');
-    const chatStartSpinner = getById('chat-start-spinner');
-    const chatStartupStatus = getById('chat-startup-status');
-    const chatStartupContainer = getById('chat-startup-container');
-    const chatInterfaceContainer = getById('chat-interface-container');
-    const chatWindow = getById('chat-window');
-    const chatInputForm = getById('chat-input-form');
-    const chatInput = getById('chat-input');
-    const chatSendBtn = getById('chat-send-btn');
-    const chatBtnSetup = getById('chat-btn-setup');
-    const chatBtnWorldview = getById('chat-btn-worldview');
-    const chatBtnAisettings = getById('chat-btn-aisettings');
-    const chatBtnSystem = getById('chat-btn-system');
-    const chatBtnClear = getById('chat-btn-clear');
-    const chatModalEl = getById('chat-modal');
-    let bsChatModal = null;
-    const chatModalTitle = getById('chat-modal-title');
-    const chatModalTextarea = getById('chat-modal-textarea');
-    const chatModalSaveBtn = getById('chat-modal-save-btn');
-
+    // --- 元素選擇器 (Gemini) ---
+    const geminiChatWindow = getById('gemini-chat-window');
+    const geminiForm = getById('gemini-input-form');
+    const geminiInput = getById('gemini-input');
+    const geminiSendBtn = getById('gemini-send-btn');
+    const geminiStartBtn = getById('gemini-start-btn');
 
     // --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfyFormElements = {
@@ -254,8 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const GM_PASSWORD = "781111";
     const GITHUB_CONFIG_URL = 'https://dinosonicgo.github.io/mysd/config.json';
     let dependencyModelsStatus = {};
-    let chatWs = null;
-    let clientId = '';
 
     // 繪圖遮罩狀態變數
     let isDrawing = false;
@@ -287,20 +270,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetch(fullUrl, options);
     }
     
-    // --- 核心函式: 即時檢測裝置在線狀態 ---
+    // --- [新增] 核心函式: 即時檢測裝置在線狀態 ---
     async function checkDeviceStatus(device) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超時
 
         try {
+            // 使用一個輕量的 API 端點作為健康檢查
             const response = await fetch(new URL('/api/comfyui/device_id', device.url).href, {
                 signal: controller.signal,
-                cache: 'no-store'
+                cache: 'no-store' // 確保是即時請求
             });
             clearTimeout(timeoutId);
             return response.ok ? 'online' : 'offline';
         } catch (error) {
             clearTimeout(timeoutId);
+            // 忽略裝置名稱，因為它可能不存在
+            // console.warn(`裝置 ${device.url} 似乎離線:`, error.name);
             return 'offline';
         }
     }
@@ -335,8 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndPopulateControlNetResources(),
             fetchAndPopulateVideoModels(),
             fetchAndPopulateSamplers(),
-            fetchDependencyStatus(),
-            checkChatServiceStatus() // 檢查聊天服務狀態
+            fetchDependencyStatus()
         ]);
     
         await loadSettings();
@@ -352,6 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('無法從 GitHub 獲取共享設定檔。');
             sharedConfig = await response.json();
 
+            // [新增] 即時狀態檢測
             console.log("正在並行檢測所有裝置的即時狀態...");
             const statusChecks = Object.entries(sharedConfig.devices).map(async ([id, device]) => {
                 const status = await checkDeviceStatus(device);
@@ -425,6 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (deviceIds.length > 0) {
                     deviceIds.forEach(id => {
                         const device = sharedConfig.devices[id];
+                        // [修正] 不再使用時間戳判斷，直接使用檢測後的 status
                         const isOnline = device.status === 'online';
 
                         const li = document.createElement('li');
@@ -466,217 +453,124 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeNavLink = document.getElementById(navId);
         if (activeNavLink) activeNavLink.classList.add('active');
     }
-    if (navChat) navChat.addEventListener('click', (e) => { e.preventDefault(); switchPage('chat-page'); });
+    if (navGemini) navGemini.addEventListener('click', (e) => { e.preventDefault(); switchPage('gemini-page'); });
     if (navComfyUI) navComfyUI.addEventListener('click', (e) => { e.preventDefault(); switchPage('comfyui-page'); });
 
-    // --- AI 聊天相關邏輯 ---
-    function getClientId() {
-        let id = localStorage.getItem('personal_assistant_user_id');
-        if (!id) {
-            id = `web-user-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-            localStorage.setItem('personal_assistant_user_id', id);
-        }
-        return id;
-    }
 
-    function addChatMessage(sender, text) {
-        if (!chatWindow) return;
+    // --- WebSocket Logic for Gemini ---
+    let geminiWs = null;
+    let currentGeminiBubble = null;
+    function addMessageToChat(message, sender, isHtml = false) {
+        if (!geminiChatWindow) return null;
         const messageWrapper = document.createElement('div');
-        messageWrapper.className = `chat-message-wrapper ${sender.toLowerCase()}-message`;
-        
+        messageWrapper.classList.add('chat-message', `${sender}-message`);
         const messageBubble = document.createElement('div');
-        messageBubble.className = 'message-bubble';
-        
-        let content;
-        try {
-            const data = JSON.parse(text);
-            content = JSON.stringify(data, null, 2);
-            messageBubble.style.whiteSpace = 'pre';
-        } catch (e) {
-            content = text;
-        }
-        
-        messageBubble.textContent = content;
-        
-        messageWrapper.appendChild(messageBubble);
-        chatWindow.appendChild(messageWrapper);
-        chatWindow.scrollTop = chatWindow.scrollHeight;
-    }
-
-    function updateChatUI(isRunning) {
-        if (isRunning) {
-            chatStartupContainer.style.display = 'none';
-            chatInterfaceContainer.style.display = 'block';
-            chatInput.disabled = false;
-            chatSendBtn.disabled = false;
-            chatInput.placeholder = "請在這裡輸入訊息...";
+        messageBubble.classList.add('message-bubble');
+        if (isHtml) {
+            messageBubble.innerHTML = message;
         } else {
-            chatStartupContainer.style.display = 'block';
-            chatInterfaceContainer.style.display = 'none';
-            chatInput.disabled = true;
-            chatSendBtn.disabled = true;
-            chatInput.placeholder = "請先啟動聊天服務";
-            chatStartBtn.disabled = false;
-            chatStartSpinner.style.display = 'none';
-            chatStartupStatus.textContent = '';
+            messageBubble.innerText = message; 
+        }
+        messageWrapper.appendChild(messageBubble);
+        geminiChatWindow.appendChild(messageWrapper);
+        geminiChatWindow.scrollTop = geminiChatWindow.scrollHeight;
+        if (sender === 'gemini') return messageBubble;
+        return null;
+    }
+    function sendToGeminiSocket(payload) {
+        if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+            geminiWs.send(JSON.stringify(payload));
         }
     }
-
-    async function checkChatServiceStatus() {
-        try {
-            const response = await fetchWithUserContext('/api/system/chat_service_status');
-            const data = await response.json();
-            if (data.is_running) {
-                updateChatUI(true);
-                connectChatWebSocket();
-            } else {
-                updateChatUI(false);
-            }
-        } catch (error) {
-            console.error('檢查聊天服務狀態失敗:', error);
-            updateChatUI(false);
-            chatStartupStatus.textContent = '錯誤: 無法連接到主伺服器。';
-        }
-    }
-    
-    async function startChatService() {
-        chatStartBtn.disabled = true;
-        chatStartSpinner.style.display = 'inline-block';
-        chatStartupStatus.textContent = '正在啟動 AI 聊天服務，請稍候...';
-
-        try {
-            const response = await fetchWithUserContext('/api/system/start_chat_service', { method: 'POST' });
-            const data = await response.json();
-            
-            if (response.ok && data.is_running) {
-                chatStartupStatus.textContent = '服務已啟動，正在建立連線...';
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 等待一下確保服務完全就緒
-                updateChatUI(true);
-                connectChatWebSocket();
-            } else {
-                throw new Error(data.detail || '啟動服務失敗');
-            }
-        } catch (error) {
-            console.error('啟動聊天服務失敗:', error);
-            chatStartupStatus.textContent = `錯誤: ${error.message}`;
-            chatStartBtn.disabled = false;
-            chatStartSpinner.style.display = 'none';
-        }
-    }
-
-    function connectChatWebSocket() {
-        if (chatWs && chatWs.readyState !== WebSocket.CLOSED) {
-            console.log("已有 WebSocket 連線，將其關閉。");
-            chatWs.close();
-        }
-        
+    function connectGeminiWebSocket() {
+        if (!geminiChatWindow || !activeDeviceUrl) return;
         const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
         const wsHost = new URL(activeDeviceUrl).host;
-        const wsUrl = `${wsProtocol}//${wsHost}/api/chat/ws/${clientId}`;
+        const wsUrl = `${wsProtocol}//${wsHost}/api/gemini/ws`;
 
-        chatWs = new WebSocket(wsUrl);
-
-        chatWs.onopen = () => {
-            console.log("已連接到 AI 聊天 WebSocket 端點。");
-        };
-
-        chatWs.onmessage = (event) => {
+        if (geminiWs && geminiWs.readyState !== WebSocket.CLOSED) {
+            geminiWs.close();
+        }
+        geminiWs = new WebSocket(wsUrl);
+        geminiWs.onopen = () => console.log("已連接到 Gemini WebSocket 端點。");
+        geminiWs.onmessage = (event) => {
             try {
-                const data = JSON.parse(event.data);
-                if (data.type && (data.type.startsWith('current_'))) {
-                    // 這是設定回傳，由 modal 處理
-                    handleSettingsResponse(data);
-                } else {
-                    addChatMessage('AI', event.data);
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'response') {
+                    const messageText = msg.data;
+                    if (messageText.includes('[GEMINI_ERROR]')) {
+                        addMessageToChat(`<strong>後端錯誤:</strong><br>${messageText.replace('[GEMINI_ERROR]:', '')}`, 'gemini', true);
+                        return;
+                    }
+                    if (currentGeminiBubble === null) currentGeminiBubble = addMessageToChat(messageText, 'gemini');
+                    else currentGeminiBubble.innerText += messageText;
+                    if(geminiChatWindow) geminiChatWindow.scrollTop = geminiChatWindow.scrollHeight;
+                } else if (msg.type === 'status') {
+                    if (msg.status === 'process_started') {
+                        addMessageToChat("✅ Gemini CLI 已成功啟動，您可以開始對話了。", 'gemini');
+                        if(geminiInput) {
+                            geminiInput.disabled = false;
+                            geminiInput.placeholder = "請在這裡輸入訊息...";
+                        }
+                        if(geminiSendBtn) geminiSendBtn.disabled = false;
+                        if(geminiStartBtn) geminiStartBtn.disabled = false;
+                    } else if (msg.status === 'error') {
+                        addMessageToChat(`❌ <strong>啟動失敗:</strong><br>${msg.data}`, 'gemini', true);
+                        if(geminiStartBtn) geminiStartBtn.disabled = false;
+                    } else if (msg.status === 'connection_ready') {
+                        if(geminiStartBtn) geminiStartBtn.disabled = false;
+                        console.log("後端已準備就緒，可以啟動 Gemini。");
+                    }
                 }
-            } catch (e) {
-                addChatMessage('AI', event.data);
+            } catch (error) {
+                console.error("解析 Gemini WebSocket 訊息時出錯:", error, "原始訊息:", event.data);
+                if (currentGeminiBubble === null) currentGeminiBubble = addMessageToChat(event.data, 'gemini');
+                else currentGeminiBubble.innerText += event.data;
+                if(geminiChatWindow) geminiChatWindow.scrollTop = geminiChatWindow.scrollHeight;
             }
         };
-
-        chatWs.onclose = () => {
-            console.log("AI 聊天 WebSocket 連線已中斷。");
-            addChatMessage('SYSTEM', '與 AI 助理的連線已中斷。');
-            checkChatServiceStatus();
+        geminiWs.onclose = () => {
+            addMessageToChat("與伺服器的連線已中斷。請重新整理頁面。", 'gemini');
+            if(geminiInput) { geminiInput.disabled = true; geminiInput.placeholder = "已斷線"; }
+            if(geminiSendBtn) geminiSendBtn.disabled = true;
+            if(geminiStartBtn) geminiStartBtn.disabled = true;
         };
-
-        chatWs.onerror = (error) => {
-            console.error("AI 聊天 WebSocket 錯誤:", error);
-            addChatMessage('SYSTEM', '連線時發生錯誤。');
+        geminiWs.onerror = (err) => {
+            console.error("Gemini WebSocket 錯誤:", err);
+            addMessageToChat("連線時發生錯誤，請檢查後端伺服器日誌。", 'gemini');
+            if(geminiInput) { geminiInput.disabled = true; }
+            if(geminiSendBtn) geminiSendBtn.disabled = true;
+            if(geminiStartBtn) geminiStartBtn.disabled = true;
         };
     }
-    
-    function sendChatMessage() {
-        const message = chatInput.value.trim();
-        if (message && chatWs && chatWs.readyState === WebSocket.OPEN) {
-            addChatMessage('USER', message);
-            chatWs.send(message);
-            chatInput.value = '';
-        }
-    }
-
-    function handleSettingsResponse(data) {
-        const settingType = chatModalEl.dataset.settingType;
-        let title = '';
-        let content = '';
-        let showModal = false;
-
-        if (data.type === 'current_settings') {
-            if (settingType === 'worldview') {
-                title = '世界觀設定';
-                content = data.world_settings;
-                showModal = true;
-            } else if (settingType === 'aisettings') {
-                title = 'AI 規範 (性格與行為)';
-                content = data.ai_settings;
-                showModal = true;
+    if (geminiStartBtn) {
+        geminiStartBtn.addEventListener('click', () => {
+            geminiStartBtn.disabled = true;
+            if(geminiChatWindow) geminiChatWindow.innerHTML = '';
+            addMessageToChat("正在啟動 Gemini CLI 子程序，請稍候...", 'gemini');
+            if(geminiInput) {
+                geminiInput.disabled = true;
+                geminiInput.placeholder = "正在啟動...";
             }
-        } else if (data.type === 'current_system_settings' && settingType === 'system') {
-            title = '自訂系統設置 (一號指令)';
-            content = data.one_instruction;
-            showModal = true;
-        }
-        
-        if (showModal) {
-            chatModalTitle.textContent = title;
-            chatModalTextarea.value = content;
-            if(bsChatModal) bsChatModal.show();
-        }
+            if(geminiSendBtn) geminiSendBtn.disabled = true;
+            connectGeminiWebSocket();
+            setTimeout(() => sendToGeminiSocket({ command: "start" }), 500);
+        });
     }
-
-    function openChatModal(type) {
-        if (chatWs && chatWs.readyState === WebSocket.OPEN) {
-            chatModalEl.dataset.settingType = type;
-            let command = '';
-            if (type === 'system') {
-                command = '/get_system_settings';
-            } else {
-                command = '/get_settings';
+    if (geminiForm) {
+        geminiForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = geminiInput.value.trim();
+            if (message && geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+                addMessageToChat(message, 'user');
+                currentGeminiBubble = null;
+                sendToGeminiSocket({ command: "input", data: message });
+                geminiInput.value = '';
             }
-            chatWs.send(command);
-        } else {
-            alert('尚未連接到聊天服務。');
-        }
+        });
     }
 
-    function saveChatSettings() {
-        const type = chatModalEl.dataset.settingType;
-        const content = chatModalTextarea.value; // 允許空內容
-        
-        let command = '';
-        if (type === 'worldview') command = `/set_worldview ${content}`;
-        else if (type === 'aisettings') command = `/set_aisettings ${content}`;
-        else if (type === 'system') command = `/set_system_settings ${content}`;
-
-        if (command && chatWs && chatWs.readyState === WebSocket.OPEN) {
-            chatWs.send(command);
-            if(bsChatModal) bsChatModal.hide();
-        } else {
-            alert('尚未連接到聊天服務，無法保存。');
-        }
-    }
-
-    // --- ComfyUI 相關邏輯 (保持不變) ---
+    // --- ComfyUI 相關邏輯 ---
 
     function updateDenoiseDefault() {
         if (!comfyFormElements.denoise) return;
@@ -1023,10 +917,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const preprocessors = await preprocessorsResponse.json();
             if (controlnetPreprocessorSelect) {
                 controlnetPreprocessorSelect.innerHTML = '';
+                // [v17.17 修正] 處理物件列表
                 preprocessors.forEach(proc => {
                     const option = document.createElement('option');
-                    option.value = proc.value;
-                    option.textContent = proc.name;
+                    option.value = proc.value; // 提交英文值
+                    option.textContent = proc.name; // 顯示中文名
                     controlnetPreprocessorSelect.appendChild(option);
                 });
             }
@@ -1108,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (type === 'model') {
             card.addEventListener('click', () => {
-                if (item.architecture && item.architecture.startsWith('flux')) {
+                if (item.architecture.startsWith('flux')) {
                     handleFluxModelSelection(item);
                 } else {
                     selectModel(item);
@@ -1136,7 +1031,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function selectModel(item) {
         const newModel = item.name;
-        const newArchitecture = item.architecture || 'sdxl';
+        const newArchitecture = item.architecture;
         if (comfyFormElements.model !== newModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
@@ -1673,6 +1568,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     comfyStatusText.classList.add('text-success');
                 }
                 if (comfySpinner) comfySpinner.style.display = 'inline-block';
+                // 等待 pollQueueStatus 自動捕捉
             } else {
                 throw new Error('後端響應格式不正確。');
             }
@@ -2019,13 +1915,16 @@ document.addEventListener('DOMContentLoaded', () => {
         [lastX, lastY] = [currentPos.x, currentPos.y];
     }
 
+    // [v17.19 修正] 分離 UI 更新和後端上傳，提供即時反饋
     async function handleDrawnMask(blob) {
+        // 步驟 1: 立即更新 UI
         const dataUrl = URL.createObjectURL(blob);
         if (maskPreview) maskPreview.src = dataUrl;
         if (maskUploadArea) maskUploadArea.style.display = 'none';
         if (maskPreviewContainer) maskPreviewContainer.style.display = 'block';
         if (maskFilename) maskFilename.textContent = 'drawn_mask.png';
 
+        // 步驟 2: 在背景執行上傳
         const maskFile = new File([blob], "drawn_mask.png", { type: "image/png" });
         try {
             const filename = await uploadImageToServer(maskFile);
@@ -2041,6 +1940,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // [v17.19 修正] 修正遮罩生成邏輯，確保是黑底白圖
     async function generateMaskAndUpload() {
         const originalImage = new Image();
         originalImage.onload = async () => {
@@ -2049,25 +1949,29 @@ document.addEventListener('DOMContentLoaded', () => {
             tempCanvas.height = originalImage.height;
             const tempCtx = tempCanvas.getContext('2d');
 
+            // 步驟 1: [BUG 修正] 先用純黑色填充整個畫布作為背景
             tempCtx.fillStyle = 'black';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
+            // 步驟 2: 處理使用者繪製的內容，將其變為純白色
             const drawnCanvas = inpaintCanvas;
             const drawnCtx = drawnCanvas.getContext('2d');
             const drawnImageData = drawnCtx.getImageData(0, 0, drawnCanvas.width, drawnCanvas.height);
             const data = drawnImageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                if (data[i + 3] > 0) {
-                    data[i] = 255;
-                    data[i + 1] = 255;
-                    data[i + 2] = 255;
-                    data[i + 3] = 255;
+                if (data[i + 3] > 0) { // 檢查透明度，只要不是完全透明
+                    data[i] = 255;     // R
+                    data[i + 1] = 255; // G
+                    data[i + 2] = 255; // B
+                    data[i + 3] = 255; // A
                 }
             }
             drawnCtx.putImageData(drawnImageData, 0, 0);
 
+            // 步驟 3: 將處理過的白色繪製區域疊加到黑色背景上
             tempCtx.drawImage(drawnCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
             
+            // 步驟 4: 生成 Blob 並觸發後續處理
             tempCanvas.toBlob(async (blob) => {
                 await handleDrawnMask(blob);
                 if (bsInpaintCanvasModal) bsInpaintCanvasModal.hide();
@@ -2288,6 +2192,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if(closeBtn) closeBtn.disabled = false;
                         dependencyModelsStatus[modelKey].exists = true;
                         ws.close();
+                        // 自動選擇模型
                         setTimeout(async () => {
                             if (bsDependencyDownloadModal) bsDependencyDownloadModal.hide();
                             await selectModel(originalSelectedItem);
@@ -2314,11 +2219,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function initialize() {
-        console.log('應用程式已初始化 v18.1');
+        console.log('應用程式已初始化 v17.21');
         
-        clientId = getClientId();
-        console.log(`客戶端 ID 已設定為: ${clientId}`);
-
         if ('serviceWorker' in navigator) {
             try {
                 serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
@@ -2334,7 +2236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (currentText === '禁用通知') {
                     await unsubscribeFromPush();
-                } else {
+                } else { // 包含 "啟用通知" 和 "重新啟用"
                     const permission = await Notification.requestPermission();
                     if (permission === 'granted') {
                         await subscribeToPush();
@@ -2350,47 +2252,28 @@ document.addEventListener('DOMContentLoaded', () => {
         
         setInterval(pollQueueStatus, 3000); 
         
-        // --- 初始化 Bootstrap Modals ---
-        if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
-        if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
+        if (modelSelectionModal) {
+            bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
+            modelSelectionModal.addEventListener('show.bs.modal', async () => {
+                if (modelSelectionGrid) modelSelectionGrid.innerHTML = '<p class="text-muted">正在刷新模型列表...</p>';
+                await fetchAndPopulateCheckpoints();
+            });
+        }
+        
+        if (loraSelectionModal) {
+            bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
+            loraSelectionModal.addEventListener('show.bs.modal', async () => {
+                tempSelectedLoras.clear();
+                comfyFormElements.loras.forEach(lora => tempSelectedLoras.add(lora.name));
+                await updateLoraListForModel(comfyFormElements.model);
+            });
+        }
+
         if (inpaintCanvasModalEl) bsInpaintCanvasModal = new bootstrap.Modal(inpaintCanvasModalEl);
         if (dependencyDownloadModalEl) bsDependencyDownloadModal = new bootstrap.Modal(dependencyDownloadModalEl);
         const gmLoginModalEl = getById('gm-login-modal');
         if (gmLoginModalEl) bsGmLoginModal = new bootstrap.Modal(gmLoginModalEl);
-        if (chatModalEl) bsChatModal = new bootstrap.Modal(chatModalEl);
 
-        // --- 事件監聽器 ---
-
-        // 聊天
-        if (chatStartBtn) chatStartBtn.addEventListener('click', startChatService);
-        if (chatInputForm) chatInputForm.addEventListener('submit', (e) => { e.preventDefault(); sendChatMessage(); });
-        if (chatBtnSetup) {
-            chatBtnSetup.addEventListener('click', () => {
-                const username = prompt('步驟 1/2: 請輸入您的名字：');
-                if (!username || !username.trim()) return alert('使用者名稱不能為空。');
-                const aiName = prompt('步驟 2/2: 請為您的 AI 戀人取一個名字：');
-                if (!aiName || !aiName.trim()) return alert('AI 名稱不能為空。');
-                if (chatWs && chatWs.readyState === WebSocket.OPEN) {
-                    chatWs.send(`/setup ${username.trim()}|||${aiName.trim()}`);
-                }
-            });
-        }
-        if (chatBtnWorldview) chatBtnWorldview.addEventListener('click', () => openChatModal('worldview'));
-        if (chatBtnAisettings) chatBtnAisettings.addEventListener('click', () => openChatModal('aisettings'));
-        if (chatBtnSystem) chatBtnSystem.addEventListener('click', () => openChatModal('system'));
-        if (chatBtnClear) {
-            chatBtnClear.addEventListener('click', () => {
-                if (confirm('確定要清除所有對話歷史和設定嗎？此操作不可復原！')) {
-                    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
-                        chatWs.send('/clear_history');
-                        chatWindow.innerHTML = ''; // 立即清除前端
-                    }
-                }
-            });
-        }
-        if (chatModalSaveBtn) chatModalSaveBtn.addEventListener('click', saveChatSettings);
-
-        // GM 登入
         if (gmLoginIcon) {
             gmLoginIcon.addEventListener('click', () => {
                 if (userContext.user_type === 'gm') {
@@ -2418,7 +2301,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // ComfyUI
         if(comfyGenerateBtn) comfyGenerateBtn.addEventListener('click', handleGenerateClick);
         if(comfyRandomSeedBtn) {
             comfyRandomSeedBtn.addEventListener('click', () => {
@@ -2462,6 +2344,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             videoOptimizePositiveCheckbox.dispatchEvent(new Event('change'));
         }
+
 
         if (enableControlnetSwitch) {
             enableControlnetSwitch.addEventListener('change', (e) => {
@@ -2538,9 +2421,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modalDownloadBtn) {
             modalDownloadBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
+
                 const url = modalDownloadBtn.href;
                 const filename = modalDownloadBtn.download;
-                if (!url || url.endsWith('#') || !filename) return;
+
+                if (!url || url.endsWith('#') || !filename) {
+                    console.error("下載 URL 或檔名缺失。");
+                    return;
+                }
 
                 const originalIconHTML = modalDownloadBtn.innerHTML;
                 modalDownloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
@@ -2548,16 +2436,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 try {
                     const response = await fetch(url);
-                    if (!response.ok) throw new Error(`無法獲取檔案: ${response.status} ${response.statusText}`);
+                    if (!response.ok) {
+                        throw new Error(`無法獲取檔案: ${response.status} ${response.statusText}`);
+                    }
                     const blob = await response.blob();
+
                     const objectUrl = URL.createObjectURL(blob);
                     const tempLink = document.createElement('a');
                     tempLink.href = objectUrl;
                     tempLink.download = filename;
+                    
                     document.body.appendChild(tempLink);
                     tempLink.click();
                     document.body.removeChild(tempLink);
+
                     URL.revokeObjectURL(objectUrl);
+
                 } catch (error) {
                     console.error("下載檔案時發生錯誤:", error);
                     alert(`下載失敗: ${error.message}`);
@@ -2579,21 +2473,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 comfyFormElements.loras = newLoras;
                 renderSelectedLoras();
                 if (bsLoraSelectionModal) bsLoraSelectionModal.hide();
-            });
-        }
-        
-        if (modelSelectionModal) {
-            modelSelectionModal.addEventListener('show.bs.modal', async () => {
-                if (modelSelectionGrid) modelSelectionGrid.innerHTML = '<p class="text-muted">正在刷新模型列表...</p>';
-                await fetchAndPopulateCheckpoints();
-            });
-        }
-
-        if (loraSelectionModal) {
-            loraSelectionModal.addEventListener('show.bs.modal', async () => {
-                tempSelectedLoras.clear();
-                comfyFormElements.loras.forEach(lora => tempSelectedLoras.add(lora.name));
-                await updateLoraListForModel(comfyFormElements.model);
             });
         }
 
@@ -2631,7 +2510,9 @@ document.addEventListener('DOMContentLoaded', () => {
                              body: JSON.stringify({ ids: idsToDelete })
                         });
                         const result = await response.json();
-                        if (!response.ok) throw new Error(result.detail || '批次刪除失敗');
+                        if (!response.ok) {
+                            throw new Error(result.detail || '批次刪除失敗');
+                        }
                         
                         console.log(result.message);
                         if (result.details && result.details.errors && result.details.errors.length > 0) {
@@ -2704,6 +2585,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkbox.addEventListener('change', filterModels);
         });
 
+        // 繪圖遮罩事件監聽
         if (drawMaskBtn) {
             drawMaskBtn.addEventListener('click', () => {
                 if (img2imgState.source_image_data && bsInpaintCanvasModal) {
@@ -2724,7 +2606,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (inpaintCanvas) {
             inpaintCtx = inpaintCanvas.getContext('2d');
-            inpaintCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+            inpaintCtx.fillStyle = 'rgba(255, 255, 255, 1)'; // 改為純白色
 
             const startDrawing = (e) => {
                 isDrawing = true;
