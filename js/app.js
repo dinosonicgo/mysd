@@ -275,35 +275,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
     const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
 
-    // --- 核心函式: API 請求與使用者上下文 ---
-    async function fetchWithUserContext(path, options = {}) {
-        if (!activeDeviceUrl) {
+// 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
+// v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
+// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
+    async function fetchWithUserContext(path, options = {}, baseUrl = null) {
+        const urlSource = baseUrl || activeDeviceUrl;
+        if (!urlSource) {
             throw new Error("沒有可用的裝置 URL。請確保已選擇一個在線裝置。");
         }
-        const fullUrl = new URL(path, activeDeviceUrl).href;
+        const fullUrl = new URL(path, urlSource).href;
         const headers = new Headers(options.headers || {});
         headers.append('X-User-Type', userContext.user_type);
         options.headers = headers;
         return fetch(fullUrl, options);
     }
+// 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
     
-    // --- 核心函式: 即時檢測裝置在線狀態 ---
+// 函式功能：即時檢測指定裝置的在線狀態
+// v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
+// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
+// v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
     async function checkDeviceStatus(device) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超時
 
         try {
-            const response = await fetch(new URL('/api/comfyui/device_id', device.url).href, {
-                signal: controller.signal,
-                cache: 'no-store'
-            });
+            // [v18.2 修正] 改為使用 fetchWithUserContext 以確保請求一致性
+            const response = await fetchWithUserContext(
+                '/api/comfyui/device_id', 
+                {
+                    signal: controller.signal,
+                    cache: 'no-store'
+                },
+                device.url // 將裝置的特定 URL 作為 baseUrl 傳入
+            );
             clearTimeout(timeoutId);
             return response.ok ? 'online' : 'offline';
         } catch (error) {
             clearTimeout(timeoutId);
+            // 瀏覽器開發者工具 (F12) 的 Console 中可能會顯示詳細的 CORS 錯誤
+            console.error(`檢查裝置 ${device.url} 狀態失敗:`, error);
             return 'offline';
         }
     }
+// 函式功能：即時檢測指定裝置的在線狀態
 
     // --- 核心函式: 裝置切換與資料載入 ---
     async function switchDevice(deviceId) {
