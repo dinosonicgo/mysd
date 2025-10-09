@@ -1,9 +1,9 @@
-// Auto-deployed version: 1760028629
-
 // static/js/app.js
 
 /**
- * v1760025042 (auto-deployed)
+ * v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
+ * v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
+ * v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -275,48 +275,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
     const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
 
-// 函式功能：使用使用者上下文標頭發起 fetch 請求
-// v18.5 (URL 統一修正): [根本性修正] 移除了 `baseUrl` 參數，強制此函式只使用唯一的全域變數 `activeDeviceUrl` 作為 API 請求的目標。此修改旨在消除因 URL 來源不一致而導致的 CORS 和 404 錯誤，確保應用程式內所有 API 請求都發送到單一、正確的目標伺服器。
-// v18.4 (Pydantic V2 兼容性修正): 將 `model_architecture` 欄位重命名為 `architecture`，以匹配後端 Pydantic 模型的更新，解決命名空間衝突問題。
-// v18.3 (快取修正): [根本性修正] 在 fetch 共享設定檔 `config.json` 的 URL 後附加了一個基於當前時間戳的查詢參數 (`?t=${new Date().getTime()}`)。這個「快取破解器」強制瀏覽器和 GitHub Pages CDN 每次都傳遞最新版本的 `config.json`，從根本上解決了因讀取到過時的 Cloudflare URL 而導致裝置被錯誤地判斷為「離線」的問題。
-    async function fetchWithUserContext(path, options = {}) {
-        if (!activeDeviceUrl) {
-            throw new Error("沒有可用的裝置 URL。請確保已選擇一個在線裝置或正在本地運行。");
+// 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
+// v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
+// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
+    async function fetchWithUserContext(path, options = {}, baseUrl = null) {
+        const urlSource = baseUrl || activeDeviceUrl;
+        if (!urlSource) {
+            throw new Error("沒有可用的裝置 URL。請確保已選擇一個在線裝置。");
         }
-        const fullUrl = new URL(path, activeDeviceUrl).href;
+        const fullUrl = new URL(path, urlSource).href;
         const headers = new Headers(options.headers || {});
         headers.append('X-User-Type', userContext.user_type);
         options.headers = headers;
         return fetch(fullUrl, options);
     }
-// 函式功能：使用使用者上下文標頭發起 fetch 請求
+// 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
     
 // 函式功能：即時檢測指定裝置的在線狀態
-// v18.5 (URL 統一修正): [根本性修正] 重構了此函式的實現方式。在檢查特定裝置之前，它會先保存當前的全域 `activeDeviceUrl`，然後臨時將其設置為要檢查的裝置 URL，完成後再恢復。這確保了 `checkDeviceStatus` 能夠複用已修正的、統一的 `fetchWithUserContext` 函式，從而保證心跳請求與所有其他 API 請求使用完全相同的標頭和 CORS 策略，徹底解決了「離線」顯示問題。
-// v18.4 (Pydantic V2 兼容性修正): 將 `model_architecture` 欄位重命名為 `architecture`，以匹配後端 Pydantic 模型的更新，解決命名空間衝突問題。
-// v18.3 (快取修正): [根本性修正] 在 fetch 共享設定檔 `config.json` 的 URL 後附加了一個基於當前時間戳的查詢參數 (`?t=${new Date().getTime()}`)。這個「快取破解器」強制瀏覽器和 GitHub Pages CDN 每次都傳遞最新版本的 `config.json`，從根本上解決了因讀取到過時的 Cloudflare URL 而導致裝置被錯誤地判斷為「離線」的問題。
+// v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
+// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
+// v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
     async function checkDeviceStatus(device) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); 
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超時
 
-        const originalActiveDeviceUrl = activeDeviceUrl; // 保存當前的 URL
         try {
-            activeDeviceUrl = device.url; // 臨時設置為要檢查的 URL
+            // [v18.2 修正] 改為使用 fetchWithUserContext 以確保請求一致性
             const response = await fetchWithUserContext(
                 '/api/comfyui/device_id', 
                 {
                     signal: controller.signal,
                     cache: 'no-store'
-                }
+                },
+                device.url // 將裝置的特定 URL 作為 baseUrl 傳入
             );
             clearTimeout(timeoutId);
             return response.ok ? 'online' : 'offline';
         } catch (error) {
             clearTimeout(timeoutId);
+            // 瀏覽器開發者工具 (F12) 的 Console 中可能會顯示詳細的 CORS 錯誤
             console.error(`檢查裝置 ${device.url} 狀態失敗:`, error);
             return 'offline';
-        } finally {
-            activeDeviceUrl = originalActiveDeviceUrl; // 無論成功或失敗，都恢復原始 URL
         }
     }
 // 函式功能：即時檢測指定裝置的在線狀態
@@ -363,33 +362,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // 函式功能：載入共享設定檔並初始化應用程式
-// v18.5 (URL 統一修正): [流程重構] 重構了函式的執行流程。現在，它會在確定目標裝置（本地或遠端）並成功設置 `activeDeviceUrl` 之後，才觸發 `reloadDataForActiveDevice()` 和後續的 `updateNotificationUI()` 與 `pollQueueStatus()`。這確保了所有依賴 `activeDeviceUrl` 的操作都在 URL 被正確初始化後才執行，從根本上解決了 API 請求發送到錯誤目標（如 github.io）的問題。
-// v18.4 (Pydantic V2 兼容性修正): 將 `model_architecture` 欄位重命名為 `architecture`，以匹配後端 Pydantic 模型的更新，解決命名空間衝突問題。
 // v18.3 (快取修正): [根本性修正] 在 fetch 共享設定檔 `config.json` 的 URL 後附加了一個基於當前時間戳的查詢參數 (`?t=${new Date().getTime()}`)。這個「快取破解器」強制瀏覽器和 GitHub Pages CDN 每次都傳遞最新版本的 `config.json`，從根本上解決了因讀取到過時的 Cloudflare URL 而導致裝置被錯誤地判斷為「離線」的問題。
+// v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
+// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
     async function loadSharedConfigAndInitialize() {
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-        // 對於本地訪問，直接設置 activeDeviceUrl 並加載數據
-        if (isLocal) {
-            console.log("偵測到本地訪問，強制設為一般使用者模式。");
-            userContext.user_type = 'local';
-            activeDeviceUrl = window.location.origin; // 這是最關鍵的設置
-            localStorage.removeItem('user_type');
-            localStorage.removeItem('gm_last_device');
-            try {
-                const deviceResponse = await fetchWithUserContext('/api/comfyui/device_id');
-                const data = await deviceResponse.json();
-                localDeviceId = data.device_id || 'local_pc';
-            } catch (e) {
-                console.error("無法獲取本地 device_id", e);
-            }
-            updateDeviceSelectorUI(localDeviceId);
-            await reloadDataForActiveDevice();
-            return; // 本地模式初始化完成
-        }
-
-        // 對於遠端訪問 (github.io)
         try {
+            // [v18.3 修正] 添加時間戳以繞過快取
             const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
             if (!response.ok) throw new Error('無法從 GitHub 獲取共享設定檔。');
             sharedConfig = await response.json();
@@ -405,38 +383,52 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error(error);
             if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
-            return; // 載入遠端設定失敗，中斷流程
         }
 
-        userContext.user_type = localStorage.getItem('user_type') || 'local';
-        if (userContext.user_type === 'gm') {
-            const lastDevice = localStorage.getItem('gm_last_device');
-            const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
-            
-            let targetDevice = null;
-            if (lastDevice && onlineDevices.includes(lastDevice)) {
-                targetDevice = lastDevice;
-            } else if (onlineDevices.length > 0) {
-                targetDevice = onlineDevices[0];
-            }
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-            if (targetDevice) {
-                // switchDevice 會設置全域的 activeDeviceUrl
-                await switchDevice(targetDevice); 
-            } else {
-                updateDeviceSelectorUI(null);
-                alert('目前沒有任何遠端裝置在線。');
-                if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
+        if (isLocal) {
+            console.log("偵測到本地訪問，強制設為一般使用者模式。");
+            userContext.user_type = 'local';
+            localStorage.removeItem('user_type');
+            localStorage.removeItem('gm_last_device');
+            try {
+                const deviceResponse = await fetchWithUserContext('/api/comfyui/device_id');
+                const data = await deviceResponse.json();
+                localDeviceId = data.device_id || 'local_pc';
+            } catch (e) {
+                console.error("無法獲取本地 device_id", e);
             }
+            updateDeviceSelectorUI(localDeviceId);
+            await reloadDataForActiveDevice();
+
         } else {
-             if(userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
-             if(deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
-             if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
+            userContext.user_type = localStorage.getItem('user_type') || 'local';
+            if (userContext.user_type === 'gm') {
+                const lastDevice = localStorage.getItem('gm_last_device');
+                const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
+                
+                let targetDevice = null;
+                if (lastDevice && onlineDevices.includes(lastDevice)) {
+                    targetDevice = lastDevice;
+                } else if (onlineDevices.length > 0) {
+                    targetDevice = onlineDevices[0];
+                }
+
+                if (targetDevice) {
+                    await switchDevice(targetDevice);
+                } else {
+                    updateDeviceSelectorUI(null);
+                    alert('目前沒有任何遠端裝置在線。');
+                }
+            } else {
+                 if(userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
+                 if(deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
+                 if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
+            }
         }
     }
 // 函式功能：載入共享設定檔並初始化應用程式
-
-
 
     function updateDeviceSelectorUI(currentDeviceId) {
         if (!userStatusDisplay || !gmLoginIcon) return;
@@ -714,15 +706,13 @@ document.addEventListener('DOMContentLoaded', () => {
         comfyFormElements.denoise.value = (isImg2ImgMode || isControlNetMode) ? 0.75 : 1.0;
     }
 
-// 函式功能：儲存使用者介面設定到後端
-// v18.4 (Pydantic V2 兼容性修正): 將 `model_architecture` 欄位重命名為 `architecture`，以匹配後端 Pydantic 模型的更新，解決命名空間衝突問題。
     async function saveSettings() {
         const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
         const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
     
         const settings = {
             model: comfyFormElements.model,
-            architecture: comfyFormElements.model_architecture, // [v18.4 修正]
+            model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
@@ -762,7 +752,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('儲存設定到後端時發生錯誤:', error);
         }
     }
-// 函式功能：儲存使用者介面設定到後端
 
     async function loadSettings() {
         try {
@@ -1597,8 +1586,6 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
-// 函式功能：處理生成按鈕的點擊事件，組合 payload 並發送請求
-// v18.4 (Pydantic V2 兼容性修正): 將 payload 中的 `model_architecture` 欄位重命名為 `architecture`，以與後端 API 的 Pydantic 模型保持一致，解決命名空間衝突問題。
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1628,7 +1615,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const payload = {
             model: comfyFormElements.model,
-            architecture: comfyFormElements.model_architecture, // [v18.4 修正]
+            model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
             main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
@@ -1720,7 +1707,6 @@ document.addEventListener('DOMContentLoaded', () => {
             resetUI();
         }
     }
-// 函式功能：處理生成按鈕的點擊事件，組合 payload 並發送請求
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
@@ -2171,8 +2157,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-// 函式功能：處理模型下載表單的提交事件
-// v18.4 (Pydantic V2 兼容性修正): 將 payload 中的 `model_type`, `model_url`, `model_name` 分別重命名為 `download_model_type`, `download_model_url`, `download_model_name`，以匹配後端 API 的 Pydantic 模型更新。
     async function handleDownloadSubmit(e) {
         e.preventDefault();
         const form = e.target;
@@ -2210,9 +2194,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const payload = {
-            download_model_type: modelType, // [v18.4 修正]
-            download_model_url: modelUrl,     // [v18.4 修正]
-            download_model_name: modelName,   // [v18.4 修正]
+            model_type: modelType,
+            model_url: modelUrl,
+            model_name: modelName,
             preview_image_base64: previewImageBase64
         };
 
@@ -2238,7 +2222,6 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.style.display = 'none';
         }
     }
-// 函式功能：處理模型下載表單的提交事件
 
     async function fetchDependencyStatus() {
         try {
@@ -2275,8 +2258,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// 函式功能：開始下載指定的依賴模型
-// v18.4 (Pydantic V2 兼容性修正): 將 payload 中的 `model_key` 欄位重命名為 `dependency_model_key`，以匹配後端 API 的 Pydantic 模型更新。
     async function startDependencyDownload(modelKey, originalSelectedItem) {
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         if (bsDependencyDownloadModal) bsDependencyDownloadModal.show();
@@ -2290,7 +2271,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetchWithUserContext('/api/comfyui/download_dependency', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dependency_model_key: modelKey }) // [v18.4 修正]
+                body: JSON.stringify({ model_key: modelKey })
             });
 
             const result = await response.json();
@@ -2352,29 +2333,26 @@ document.addEventListener('DOMContentLoaded', () => {
             if(closeBtn) closeBtn.disabled = false;
         }
     }
-// 函式功能：開始下載指定的依賴模型
 
-// 函式功能：應用程式主初始化函式
-// v18.5 (URL 統一修正): [流程重構] 將 `updateNotificationUI()` 和 `setInterval(pollQueueStatus, 3000)` 的呼叫移出此函式。這些操作現在由 `reloadDataForActiveDevice` 在 `activeDeviceUrl` 被正確設置後觸發，確保了它們總是在正確的上下文中執行，避免了 API 請求發送到錯誤的目標。
-// v18.4 (Pydantic V2 兼容性修正): 將 `model_architecture` 欄位重命名為 `architecture`，以匹配後端 Pydantic 模型的更新，解決命名空間衝突問題。
-// v18.3 (快取修正): [根本性修正] 在 fetch 共享設定檔 `config.json` 的 URL 後附加了一個基於當前時間戳的查詢參數 (`?t=${new Date().getTime()}`)。這個「快取破解器」強制瀏覽器和 GitHub Pages CDN 每次都傳遞最新版本的 `config.json`，從根本上解決了因讀取到過時的 Cloudflare URL 而導致裝置被錯誤地判斷為「離線」的問題。
     async function initialize() {
-        console.log('應用程式已初始化 v18.5');
+        console.log('應用程式已初始化 v18.1');
         
         clientId = getClientId();
         console.log(`客戶端 ID 已設定為: ${clientId}`);
 
         if ('serviceWorker' in navigator) {
             try {
-                serviceWorkerRegistration = await navigator.serviceWorker.register('js/sw.js');
+                serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }
         }
+        await updateNotificationUI();
         
         if (enableNotificationsBtn) {
             enableNotificationsBtn.addEventListener('click', async () => {
                 const currentText = enableNotificationsBtn.textContent.trim();
+                
                 if (currentText === '禁用通知') {
                     await unsubscribeFromPush();
                 } else {
@@ -2383,14 +2361,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         await subscribeToPush();
                     } else {
                         console.log('使用者拒絕了通知權限。');
+                        await updateNotificationUI();
                     }
-                    await updateNotificationUI(); // 無論如何都更新UI
                 }
             });
         }
         
-        // 核心初始化流程，它會處理 URL 設置和後續的資料加載
         await loadSharedConfigAndInitialize();
+        
+        setInterval(pollQueueStatus, 3000); 
         
         // --- 初始化 Bootstrap Modals ---
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
@@ -2815,4 +2794,32 @@ document.addEventListener('DOMContentLoaded', () => {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
     }
-// 函式功能：應用程式主初始化函式
+    
+    initialize();
+});
+
+function filterModels() {
+    const modelSelectionGrid = document.getElementById('model-selection-grid');
+    if (!modelSelectionGrid) return;
+
+    const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
+    const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
+
+    modelCards.forEach(card => {
+        const modelName = card.dataset.itemName.toLowerCase();
+        let show = false;
+        if (selectedFilters.length === 0) {
+            show = true;
+        } else {
+            show = selectedFilters.some(filter => {
+                if (filter === 'sdxl' && modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                if (filter === 'sd3' && modelName.includes('sd3')) return true;
+                if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                if (filter === 'flux' && modelName.includes('flux')) return true;
+                if (filter === 'sdxl' && modelName.includes('pony')) return true;
+                return false;
+            });
+        }
+        card.style.display = show ? 'block' : 'none';
+    });
+}
