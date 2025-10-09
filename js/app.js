@@ -1,9 +1,7 @@
 // static/js/app.js
 
 /**
- * v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
- * v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
- * v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
+ * v1760021651 (auto-deployed)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
