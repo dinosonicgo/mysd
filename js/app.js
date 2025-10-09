@@ -1,4 +1,4 @@
-// Auto-deployed version: 1760027744
+// Auto-deployed version: 1760028629
 
 // static/js/app.js
 
@@ -2366,7 +2366,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if ('serviceWorker' in navigator) {
             try {
-                serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
+                serviceWorkerRegistration = await navigator.serviceWorker.register('js/sw.js');
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }
