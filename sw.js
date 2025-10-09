@@ -1,3 +1,5 @@
+// Auto-deployed version: 1760025684
+
 // static/js/sw.js
 
 // 函式功能：監聽 'push' 事件，當從伺服器接收到推播訊息時觸發
