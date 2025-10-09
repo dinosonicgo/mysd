@@ -216,9 +216,10 @@ document.addEventListener('DOMContentLoaded', () => {
     historyLoadingIndicator.className = 'text-center text-muted p-3 col-12';
     historyLoadingIndicator.style.display = 'none';
 
-    // --- 狀態變數 ---
+// --- 狀態變數 ---
     let userContext = { user_type: 'local' };
-    let activeDeviceUrl = window.location.origin;
+    // [v1.1 修正] 將初始值設為 null，避免在遠端頁面預設為 github.io
+    let activeDeviceUrl = null;
     let localDeviceId = 'local_pc';
     let sharedConfig = { devices: {} };
     let img2imgState = { source_image: null, inpaint_mask: null, source_image_data: null };
@@ -258,17 +259,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
     const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，極度非常精緻的細節、UHD、完美傑作，最高畫質，大光圈，8K";
 
-    // --- 核心函式: API 請求與使用者上下文 ---
+// 函式功能: (v1.1) 帶有使用者上下文的 fetch 請求封裝，並修正了 URL 構建邏輯以確保能正確訪問遠端裝置。
     async function fetchWithUserContext(path, options = {}) {
         if (!activeDeviceUrl) {
-            throw new Error("沒有可用的裝置 URL。請確保已選擇一個在線裝置。");
+            // 在 localDeviceId 尚未確定前，先給一個通用的錯誤訊息
+            const deviceIdentifier = userContext.user_type === 'local' ? (localDeviceId || '本地裝置') : '遠端裝置';
+            const errorMessage = `沒有可用的裝置 URL。請確保 ${deviceIdentifier} 已成功連接並在線。`;
+            console.error(errorMessage, "當前 activeDeviceUrl:", activeDeviceUrl);
+            throw new Error(errorMessage);
         }
-        const fullUrl = new URL(path, activeDeviceUrl).href;
+
+        // 確保路徑以 '/' 開頭但不是 '//'
+        const cleanPath = `/${path.replace(/^\/+/, '')}`;
+        // 移除 activeDeviceUrl 結尾可能存在的斜線，然後拼接路徑
+        const fullUrl = `${activeDeviceUrl.replace(/\/$/, '')}${cleanPath}`;
+        
         const headers = new Headers(options.headers || {});
         headers.append('X-User-Type', userContext.user_type);
         options.headers = headers;
-        return fetch(fullUrl, options);
+
+        try {
+            const response = await fetch(fullUrl, options);
+            return response;
+        } catch (error) {
+            console.error(`對 ${fullUrl} 的 fetch 請求失敗:`, error);
+            // 拋出更詳細的錯誤，方便調試
+            throw new Error(`無法連接到目標裝置 (${activeDeviceUrl})。請檢查網路連線、CORS 設定或 Cloudflare Tunnel 是否正常運作。詳細錯誤: ${error.message}`);
+        }
     }
+    // 函式功能: (v1.1) 帶有使用者上下文的 fetch 請求封裝，並修正了 URL 構建邏輯以確保能正確訪問遠端裝置。
     
     // --- [新增] 核心函式: 即時檢測裝置在線狀態 ---
     async function checkDeviceStatus(device) {
