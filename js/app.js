@@ -1,7 +1,7 @@
 // static/js/app.js
 
 /**
- * v1760022248 (auto-deployed)
+ * v1760023430 (auto-deployed)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -704,13 +704,15 @@ document.addEventListener('DOMContentLoaded', () => {
         comfyFormElements.denoise.value = (isImg2ImgMode || isControlNetMode) ? 0.75 : 1.0;
     }
 
+// 函式功能：儲存使用者介面設定到後端
+// v18.4 (Pydantic V2 兼容性修正): 將 `model_architecture` 欄位重命名為 `architecture`，以匹配後端 Pydantic 模型的更新，解決命名空間衝突問題。
     async function saveSettings() {
         const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
         const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
     
         const settings = {
             model: comfyFormElements.model,
-            model_architecture: comfyFormElements.model_architecture,
+            architecture: comfyFormElements.model_architecture, // [v18.4 修正]
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
@@ -750,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('儲存設定到後端時發生錯誤:', error);
         }
     }
+// 函式功能：儲存使用者介面設定到後端
 
     async function loadSettings() {
         try {
@@ -1584,6 +1587,8 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
+// 函式功能：處理生成按鈕的點擊事件，組合 payload 並發送請求
+// v18.4 (Pydantic V2 兼容性修正): 將 payload 中的 `model_architecture` 欄位重命名為 `architecture`，以與後端 API 的 Pydantic 模型保持一致，解決命名空間衝突問題。
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1613,7 +1618,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const payload = {
             model: comfyFormElements.model,
-            model_architecture: comfyFormElements.model_architecture,
+            architecture: comfyFormElements.model_architecture, // [v18.4 修正]
             loras: comfyFormElements.loras,
             main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
@@ -1705,6 +1710,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resetUI();
         }
     }
+// 函式功能：處理生成按鈕的點擊事件，組合 payload 並發送請求
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
@@ -2155,6 +2161,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+// 函式功能：處理模型下載表單的提交事件
+// v18.4 (Pydantic V2 兼容性修正): 將 payload 中的 `model_type`, `model_url`, `model_name` 分別重命名為 `download_model_type`, `download_model_url`, `download_model_name`，以匹配後端 API 的 Pydantic 模型更新。
     async function handleDownloadSubmit(e) {
         e.preventDefault();
         const form = e.target;
@@ -2192,9 +2200,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const payload = {
-            model_type: modelType,
-            model_url: modelUrl,
-            model_name: modelName,
+            download_model_type: modelType, // [v18.4 修正]
+            download_model_url: modelUrl,     // [v18.4 修正]
+            download_model_name: modelName,   // [v18.4 修正]
             preview_image_base64: previewImageBase64
         };
 
@@ -2220,6 +2228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.style.display = 'none';
         }
     }
+// 函式功能：處理模型下載表單的提交事件
 
     async function fetchDependencyStatus() {
         try {
@@ -2256,6 +2265,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 函式功能：開始下載指定的依賴模型
+// v18.4 (Pydantic V2 兼容性修正): 將 payload 中的 `model_key` 欄位重命名為 `dependency_model_key`，以匹配後端 API 的 Pydantic 模型更新。
     async function startDependencyDownload(modelKey, originalSelectedItem) {
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         if (bsDependencyDownloadModal) bsDependencyDownloadModal.show();
@@ -2269,7 +2280,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetchWithUserContext('/api/comfyui/download_dependency', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model_key: modelKey })
+                body: JSON.stringify({ dependency_model_key: modelKey }) // [v18.4 修正]
             });
 
             const result = await response.json();
@@ -2331,6 +2342,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(closeBtn) closeBtn.disabled = false;
         }
     }
+// 函式功能：開始下載指定的依賴模型
 
     async function initialize() {
         console.log('應用程式已初始化 v18.1');
