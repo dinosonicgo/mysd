@@ -361,8 +361,13 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("資料重新載入完成。");
     }
 
+// 函式功能：載入共享設定檔並初始化應用程式
+// v18.3 (快取修正): [根本性修正] 在 fetch 共享設定檔 `config.json` 的 URL 後附加了一個基於當前時間戳的查詢參數 (`?t=${new Date().getTime()}`)。這個「快取破解器」強制瀏覽器和 GitHub Pages CDN 每次都傳遞最新版本的 `config.json`，從根本上解決了因讀取到過時的 Cloudflare URL 而導致裝置被錯誤地判斷為「離線」的問題。
+// v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
+// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
     async function loadSharedConfigAndInitialize() {
         try {
+            // [v18.3 修正] 添加時間戳以繞過快取
             const response = await fetch(`${GITHUB_CONFIG_URL}?t=${new Date().getTime()}`);
             if (!response.ok) throw new Error('無法從 GitHub 獲取共享設定檔。');
             sharedConfig = await response.json();
@@ -423,6 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+// 函式功能：載入共享設定檔並初始化應用程式
 
     function updateDeviceSelectorUI(currentDeviceId) {
         if (!userStatusDisplay || !gmLoginIcon) return;
