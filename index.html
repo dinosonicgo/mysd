@@ -340,6 +340,7 @@
                                         <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-adetailer">
                                         <label class="form-check-label" for="comfy-enable-adetailer">啟用臉部修復功能</label>
                                     </div>
+<!-- ADetailer 選項區塊 -->
                                     <div id="adetailer-options">
                                         <div class="mb-2">
                                             <label for="comfy-adetailer-positive-prompt" class="form-label small"><strong>臉部專用正面提示詞</strong></label>
@@ -349,7 +350,12 @@
                                                 <label class="form-check-label" for="comfy-translate-adetailer-positive-checkbox">自動翻譯為英文</label>
                                             </div>
                                         </div>
+                                        <div class="mb-2">
+                                            <label for="comfy-adetailer-steps" class="form-label small"><strong>臉部修復步數 (Steps)</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-adetailer-steps" min="1" placeholder="留空則使用主流程步數">
+                                        </div>
                                     </div>
+<!-- ADetailer 選項區塊 -->
 
                                     <hr>
                                     <h5><i class="bi bi-sliders"></i> 採樣器設定</h5>
@@ -1068,6 +1074,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1760139757"></script>
+    <script src="js/app.js?v=1760194489"></script>
 </body>
 </html>

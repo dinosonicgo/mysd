@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatModalSaveBtn = getById('chat-modal-save-btn');
 
 
-    // --- 元素選擇器 (ComfyUI - 參數設定) ---
+// --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
@@ -62,8 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
         enable_adetailer: getById('comfy-enable-adetailer'),
         adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
         translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
+        adetailer_steps: getById('comfy-adetailer-steps'),
         denoise: getById('comfy-denoise'),
     };
+// --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfySelectedModelName = getById('comfy-selected-model-name');
     const selectedLoraListContainer = getById('selected-lora-list-container');
     const comfyRandomSeedBtn = getById('comfy-random-seed-btn');
@@ -706,6 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
         comfyFormElements.denoise.value = (isImg2ImgMode || isControlNetMode) ? 0.75 : 1.0;
     }
 
+// 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
         const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
         const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
@@ -731,6 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
+            adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
             denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
             video_main_prompt: videoMainPrompt ? videoMainPrompt.value : '',
             video_params: {
@@ -752,7 +756,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('儲存設定到後端時發生錯誤:', error);
         }
     }
+// 函式功能：將當前介面上的所有參數設定儲存到後端
 
+// 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
@@ -776,6 +782,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
             if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
+            if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
             
             const savedPosition = settings.fixed_prompt_position || 'prepend';
             if (savedPosition === 'append' && comfyFormElements.fixed_prompt_append) {
@@ -845,6 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(comfyRandomSeedBtn) comfyRandomSeedBtn.click();
         }
     }
+// 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
     
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
@@ -1239,10 +1247,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function addHistoryItemToGrid(item, mode = 'append') {
+// 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
+    function addHistoryItemToGrid(item) {
         if (!comfyHistoryGrid) return;
-        const itemDate = new Date(item.created_at).toLocaleDateString();
-        let header = comfyHistoryGrid.querySelector(`.history-date-header[data-date="${itemDate}"]`);
 
         const historyItemDiv = document.createElement('div');
         historyItemDiv.className = 'history-item';
@@ -1297,46 +1304,33 @@ document.addEventListener('DOMContentLoaded', () => {
         historyItemDiv.prepend(mediaElement);
         historyItemDiv.append(selectionOverlay, deleteBtn);
 
-        const existingIndicator = comfyHistoryGrid.querySelector('#history-loading-indicator');
-        if (existingIndicator) existingIndicator.remove();
+        // 將創建好的元素直接附加到 grid 容器的末尾
+        comfyHistoryGrid.appendChild(historyItemDiv);
 
-        if (mode === 'prepend') {
-            let firstElement = comfyHistoryGrid.firstChild;
-            if (!header) {
-                header = document.createElement('div');
-                header.className = 'history-date-header';
-                header.dataset.date = itemDate;
-                header.textContent = itemDate;
-                comfyHistoryGrid.insertBefore(header, firstElement);
-            }
-            header.after(historyItemDiv);
-        } else {
-            if (!header) {
-                header = document.createElement('div');
-                header.className = 'history-date-header';
-                header.dataset.date = date;
-                header.textContent = date;
-                comfyHistoryGrid.appendChild(header);
-            }
-            comfyHistoryGrid.appendChild(historyItemDiv);
-        }
         return historyItemDiv;
     }
+// 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
 
+// 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
     async function fetchHistory(mode = 'initial') {
+        // 如果正在載入中 (且不是請求最新紀錄)，則直接返回以避免重複請求
         if (isLoadingHistory && mode !== 'newer') return [];
         isLoadingHistory = true;
         
+        // 只有在請求舊紀錄時才顯示載入提示
         if (mode !== 'newer' && historyLoadingIndicator) {
             historyLoadingIndicator.textContent = '正在載入...';
             historyLoadingIndicator.style.display = 'block';
             if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
         }
 
+        // 根據模式構建 API 的 URL
         let url = '/api/comfyui/history?limit=30';
         if (mode === 'older' && currentHistoryList.length > 0) {
+            // 請求比當前最舊紀錄還要早的紀錄
             url += `&before_timestamp=${encodeURIComponent(currentHistoryList[currentHistoryList.length - 1].created_at)}`;
         } else if (mode === 'newer' && currentHistoryList.length > 0) {
+            // 請求比當前最新紀錄還要新的紀錄
             url = `/api/comfyui/history?after_timestamp=${encodeURIComponent(currentHistoryList[0].created_at)}`;
         }
         
@@ -1344,76 +1338,116 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetchWithUserContext(url);
             if (!response.ok) throw new Error(`無法獲取歷史紀錄: ${response.statusText}`);
             const items = await response.json();
+            
+            // 將獲取的數據交給 renderHistory 處理
             renderHistory(items, mode);
+            
+            // 如果是請求舊紀錄或初次載入，更新 hasMoreHistory 狀態
             if (mode === 'older' || mode === 'initial') {
-                hasMoreHistory = items.length >= 30;
+                hasMoreHistory = items.length >= 30; // 如果返回的數量小於請求數量，代表到底了
                 if (!hasMoreHistory && historyLoadingIndicator) {
                     historyLoadingIndicator.textContent = '沒有更多紀錄了';
+                    // 讓 "沒有更多紀錄了" 訊息繼續顯示
                     if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
                 } else if (historyLoadingIndicator) {
-                    historyLoadingIndicator.style.display = 'none';
+                    historyLoadingIndicator.style.display = 'none'; // 載入成功後隱藏
                 }
             }
             return items;
         } catch (error) {
             console.error("獲取歷史紀錄失敗:", error);
-            if (historyLoadingIndicator && mode !== 'newer') historyLoadingIndicator.textContent = `錯誤: ${error.message}`;
+            if (historyLoadingIndicator && mode !== 'newer') {
+                historyLoadingIndicator.textContent = `錯誤: ${error.message}`;
+            }
             return [];
         } finally {
-            if (mode !== 'newer') isLoadingHistory = false;
+            // 只有在請求舊紀錄或初次載入完成後才重設載入旗標
+            if (mode !== 'newer') {
+                isLoadingHistory = false;
+            }
         }
     }
+// 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
 
+// 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
     function renderHistory(items, mode) {
         if (!comfyHistoryGrid || !items) return;
-        const placeholder = comfyHistoryGrid.querySelector('p.text-muted');
-        if (placeholder) placeholder.remove();
-
+        
+        // 根據模式更新核心資料列表 currentHistoryList
         if (mode === 'initial') {
-            comfyHistoryGrid.innerHTML = '';
             currentHistoryList = items;
         } else if (mode === 'older') {
             currentHistoryList.push(...items);
         } else if (mode === 'newer') {
+            // 將新項目插入到列表開頭
             currentHistoryList.unshift(...items);
         }
         
+        // 清空當前的 grid 內容，準備重新渲染
         comfyHistoryGrid.innerHTML = '';
-        const grouped = {};
+        
+        // 如果處理後列表為空，顯示提示訊息
+        if (currentHistoryList.length === 0) {
+            comfyHistoryGrid.innerHTML = '<p class="text-muted text-center col-12">沒有歷史紀錄。</p>';
+            hasMoreHistory = false;
+            return;
+        }
+
+        // 按日期對所有歷史紀錄進行分組
+        const groupedByDate = {};
         currentHistoryList.forEach(item => {
             const date = new Date(item.created_at).toLocaleDateString();
-            if (!grouped[date]) grouped[date] = [];
-            grouped[date].push(item);
+            if (!groupedByDate[date]) {
+                groupedByDate[date] = [];
+            }
+            groupedByDate[date].push(item);
         });
 
-        Object.keys(grouped).sort((a,b) => new Date(b) - new Date(a)).forEach(date => {
+        // 按日期降序排序並渲染
+        Object.keys(groupedByDate).sort((a, b) => new Date(b) - new Date(a)).forEach(date => {
+            // 為每個日期創建一個標題
             const header = document.createElement('div');
             header.className = 'history-date-header';
             header.dataset.date = date;
             header.textContent = date;
             comfyHistoryGrid.appendChild(header);
-            grouped[date].forEach(item => addHistoryItemToGrid(item, 'append'));
+            
+            // 渲染該日期的所有項目
+            groupedByDate[date].forEach(item => {
+                // 呼叫 addHistoryItemToGrid 創建並附加 DOM 元素
+                addHistoryItemToGrid(item);
+            });
         });
-
-        if (currentHistoryList.length === 0) {
-            comfyHistoryGrid.innerHTML = '<p class="text-muted">沒有歷史紀錄。</p>';
-            hasMoreHistory = false;
-        }
     }
+// 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
 
+// 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
     async function initializeHistory() {
         if (!comfyHistoryGrid) return;
+        
+        // 為了移除舊的事件監聽器，我們用一個新的克隆節點替換它
         comfyHistoryGrid.replaceWith(comfyHistoryGrid.cloneNode(true));
         comfyHistoryGrid = getById('comfy-history-grid');
         
+        // 為新的 grid 元素添加滾動事件監聽器
         comfyHistoryGrid.addEventListener('scroll', async () => {
+            // 如果正在載入中，或者已經沒有更多歷史紀錄了，就直接返回
             if (isLoadingHistory || !hasMoreHistory) return;
+            
             const { scrollTop, scrollHeight, clientHeight } = comfyHistoryGrid;
-            if (scrollHeight - scrollTop - clientHeight < 400) await fetchHistory('older');
+            // 當滾動條距離底部小於 400px 時，觸發載入更多舊紀錄
+            if (scrollHeight - scrollTop - clientHeight < 400) {
+                await fetchHistory('older');
+            }
         });
+
+        // 首次載入歷史紀錄
         await fetchHistory('initial');
+        
+        // 應用之前儲存在 localStorage 中的高亮效果（如果有的話）
         applyPersistedHighlight();
     }
+// 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
 
     async function deleteHistoryItem(id, elementToRemove) {
         try {
@@ -1586,6 +1620,7 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
+// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1640,6 +1675,7 @@ document.addEventListener('DOMContentLoaded', () => {
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
+            adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
             enable_controlnet: enableControlnetSwitch ? enableControlnetSwitch.checked : false,
             controlnet_model: controlnetModelSelect ? controlnetModelSelect.value : null,
             controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
@@ -1707,6 +1743,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resetUI();
         }
     }
+// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
