@@ -1429,25 +1429,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 // 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
 
+// 函式功能：處理歷史紀錄網格的滾動事件，在接近底部時觸發載入更多舊紀錄
+    async function handleHistoryScroll() {
+        // 如果正在載入中，或者已經沒有更多歷史紀錄了，就直接返回
+        if (isLoadingHistory || !hasMoreHistory) return;
+        
+        // 確保 comfyHistoryGrid 元素存在
+        if (!comfyHistoryGrid) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = comfyHistoryGrid;
+        // 當滾動條距離底部小於 400px 時，觸發載入更多舊紀錄
+        if (scrollHeight - scrollTop - clientHeight < 400) {
+            await fetchHistory('older');
+        }
+    }
+// 函式功能：處理歷史紀錄網格的滾動事件，在接近底部時觸發載入更多舊紀錄
+
 // 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
     async function initializeHistory() {
         if (!comfyHistoryGrid) return;
         
-        // 為了移除舊的事件監聽器，我們用一個新的克隆節點替換它
-        comfyHistoryGrid.replaceWith(comfyHistoryGrid.cloneNode(true));
-        comfyHistoryGrid = getById('comfy-history-grid');
-        
-        // 為新的 grid 元素添加滾動事件監聽器
-        comfyHistoryGrid.addEventListener('scroll', async () => {
-            // 如果正在載入中，或者已經沒有更多歷史紀錄了，就直接返回
-            if (isLoadingHistory || !hasMoreHistory) return;
-            
-            const { scrollTop, scrollHeight, clientHeight } = comfyHistoryGrid;
-            // 當滾動條距離底部小於 400px 時，觸發載入更多舊紀錄
-            if (scrollHeight - scrollTop - clientHeight < 400) {
-                await fetchHistory('older');
-            }
-        });
+        // [v18.14 根本性修正] 移除 replaceWith，改用標準的事件監聽器管理模式
+        // 舊的監聽器（如果存在）會被移除，然後再添加新的，確保任何時候都只有一個有效的監聽器。
+        comfyHistoryGrid.removeEventListener('scroll', handleHistoryScroll);
+        comfyHistoryGrid.addEventListener('scroll', handleHistoryScroll);
 
         // 首次載入歷史紀錄
         await fetchHistory('initial');
