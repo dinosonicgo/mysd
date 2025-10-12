@@ -968,6 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
+// 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
@@ -976,14 +977,22 @@ document.addEventListener('DOMContentLoaded', () => {
             
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
-                if (modelNameLower.includes('flux')) {
+
+                // [v18.13 修正] 擴展 SDXL 架構的識別範圍，新增'xl', 'il', 'noobai', 'nai', 'pony'等關鍵字
+                const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
+
+                if (modelNameLower.includes('qwen')) {
+                    model.architecture = 'qwen_gguf';
+                } else if (modelNameLower.includes('flux')) {
                     model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
-                } else if (modelNameLower.includes('pony')) {
-                    model.architecture = 'pony';
                 } else if (modelNameLower.includes('sd3')) {
                     model.architecture = 'sd3';
-                } else {
+                } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
+                    // 如果包含任何 SDXL 家族的關鍵字，則統一歸類為 'sdxl'
                     model.architecture = 'sdxl';
+                } else {
+                    // 對於其他所有模型，作為後備，將其視為 sd1.5
+                    model.architecture = 'sd15'; 
                 }
                 return model;
             });
@@ -1002,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(comfyStatusText) { comfyStatusText.textContent = `錯誤: ${error.message}。`; comfyStatusText.classList.add('text-danger'); }
         }
     }
+// 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
 
     async function fetchAndPopulateVideoModels() {
         try {
