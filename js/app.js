@@ -208,8 +208,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const historySelectionCount = getById('history-selection-count');
     const historySelectionCountDelete = getById('history-selection-count-delete');
     
-    // --- 元素選擇器 (預設提示詞按鈕) ---
+// --- 元素選擇器 (預設提示詞按鈕) ---
     const negativePromptSetDefaultBtn = getById('negative-prompt-set-default-btn');
+    const negativePromptSetGuroBtn = getById('negative-prompt-set-guro-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
 
     // --- 元素選擇器 (模型下載) ---
@@ -274,8 +275,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let downloadWs = null;
 
 // --- 預設提示詞常數 ---
-    const DEFAULT_NEGATIVE_PROMPT = "modern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured, long body, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, very displeasing, (worst quality, bad quality:1.2), bad anatomy, sketch, jpeg artifacts, signature, watermark, username, signature, simple background, conjoined,";
-    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，(傑作:1.2)，(最高品質:1.2)，(超精細細節:1.1)，(8k:1.1)，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
+    const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
+    const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
+    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，傑作，最高品質，超精細細節，8k，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
 // --- 預設提示詞常數 ---
 
 // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
@@ -2758,7 +2760,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (negativePromptSetDefaultBtn && comfyFormElements.negative_prompt) {
             negativePromptSetDefaultBtn.addEventListener('click', () => {
-                comfyFormElements.negative_prompt.value = DEFAULT_NEGATIVE_PROMPT;
+                comfyFormElements.negative_prompt.value = DEFAULT_NEGATIVE_PROMPT_GENERAL;
+            });
+        }
+        
+        if (negativePromptSetGuroBtn && comfyFormElements.negative_prompt) {
+            negativePromptSetGuroBtn.addEventListener('click', () => {
+                comfyFormElements.negative_prompt.value = DEFAULT_NEGATIVE_PROMPT_GURO;
+            });
+        }
+
+        if (fixedPromptSetDefaultBtn && comfyFormElements.fixed_prompt) {
+            fixedPromptSetDefaultBtn.addEventListener('click', () => {
+                comfyFormElements.fixed_prompt.value = DEFAULT_FIXED_PROMPT;
             });
         }
         if (fixedPromptSetDefaultBtn && comfyFormElements.fixed_prompt) {

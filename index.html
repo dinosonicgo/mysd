@@ -729,7 +729,7 @@
         </div>
     </div>
 
-    <!-- 負面提示詞 Modal -->
+<!-- 負面提示詞 Modal -->
     <div class="modal fade" id="negative-prompt-modal" tabindex="-1" aria-labelledby="negativePromptModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -741,7 +741,10 @@
                     <textarea class="form-control" id="comfy-negative-prompt" rows="8" placeholder="輸入不想看到的內容..."></textarea>
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
-                    <button type="button" class="btn btn-secondary" id="negative-prompt-set-default-btn">填入預設</button>
+                    <div>
+                        <button type="button" class="btn btn-secondary" id="negative-prompt-set-default-btn">填入通用預設</button>
+                        <button type="button" class="btn btn-info" id="negative-prompt-set-guro-btn">填入獵奇預設</button>
+                    </div>
                     <button type="button" class="btn btn-primary" data-bs-dismiss="modal">儲存</button>
                 </div>
             </div>
@@ -1074,6 +1077,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1760460127"></script>
+    <script src="js/app.js?v=1760483453"></script>
 </body>
 </html>
