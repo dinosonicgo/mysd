@@ -972,34 +972,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
+// v18.2 (架構統一): [架構優化] 移除了前端所有關於模型架構 (architecture) 的判斷邏輯。現在前端將完全信任並直接使用後端 API (`/api/comfyui/checkpoints`) 返回的架構分類。此修改將架構判斷的權威來源統一到後端，簡化了前端程式碼，並從根本上避免了前後端判斷邏輯不一致可能導致的問題。
+// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
+// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
-            let checkpoints = await checkpointsResponse.json();
             
-            checkpoints = checkpoints.map(model => {
-                const modelNameLower = model.name.toLowerCase();
-
-                // [v18.13 修正] 擴展 SDXL 架構的識別範圍，新增'xl', 'il', 'noobai', 'nai', 'pony'等關鍵字
-                const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
-
-                if (modelNameLower.includes('qwen')) {
-                    model.architecture = 'qwen_gguf';
-                } else if (modelNameLower.includes('flux')) {
-                    model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
-                } else if (modelNameLower.includes('sd3')) {
-                    model.architecture = 'sd3';
-                } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
-                    // 如果包含任何 SDXL 家族的關鍵字，則統一歸類為 'sdxl'
-                    model.architecture = 'sdxl';
-                } else {
-                    // 對於其他所有模型，作為後備，將其視為 sd1.5
-                    model.architecture = 'sd15'; 
-                }
-                return model;
-            });
-
+            // [v18.2 修正] 直接使用後端返回的權威架構資訊，不再於前端進行重複判斷
+            const checkpoints = await checkpointsResponse.json();
+            
             if (modelSelectionGrid) {
                 modelSelectionGrid.innerHTML = '';
                 checkpoints.forEach(model => modelSelectionGrid.appendChild(createModelCard(model, 'model')));
