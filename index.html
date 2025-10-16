@@ -248,7 +248,7 @@
             </div>
         </div>
 
-        <!-- [修改] ComfyUI 繪圖頁面 (預設顯示) -->
+<!-- START: ComfyUI 繪圖頁面 (預設顯示) -->
         <div id="comfyui-page" class="page-content" style="display: block;">
             <div class="row">
                 <!-- 左側控制面板 -->
@@ -329,6 +329,7 @@
                                             </div>
                                         </div>
 <!-- END: 提示詞選項按鈕區塊 -->
+                                    </div>
                                     <div class="mb-3">
                                         <div class="d-grid">
                                             <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#negative-prompt-modal">
@@ -634,8 +635,9 @@
                         </div>
                     </div>
                 </div>
-            </div>
+            </div> <!-- 核心修正點：這個 </div> 應該在這裡，以正確關閉 class="row" -->
         </div>
+<!-- END: ComfyUI 繪圖頁面 (預設顯示) -->
     </main>
 
     <!-- [新增] AI 聊天 Modal -->
@@ -1103,6 +1105,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1760615380"></script>
+    <script src="js/app.js?v=1760616349"></script>
 </body>
 </html>
