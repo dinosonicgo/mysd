@@ -306,6 +306,7 @@
                                         <label for="comfy-positive-prompt" class="form-label"><strong>正面提示詞 (核心創意)</strong></label>
                                         <textarea class="form-control" id="comfy-positive-prompt" rows="5" placeholder="請輸入核心創意..."></textarea>
                                         <div id="comfy-positive-prompt-warning" class="text-danger mt-1 prompt-warning" style="display: none;"></div>
+<!-- START: 提示詞選項按鈕區塊 -->
                                         <div class="mt-2 d-flex justify-content-between align-items-center">
                                             <fieldset id="prompt-optimization-fieldset">
                                                 <div class="form-check form-switch form-check-inline">
@@ -317,11 +318,17 @@
                                                     <label class="form-check-label" for="comfy-ai-optimize-checkbox">AI 優化提示詞</label>
                                                 </div>
                                             </fieldset>
-                                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#fixed-prompt-modal">
-                                                <i class="bi bi-pin-angle-fill"></i> 固定提示詞
-                                            </button>
+                                            <!-- [v19.2 新增] 增加按鈕之間的間距 -->
+                                            <div class="btn-group" role="group">
+                                                <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#interaction-prompt-modal">
+                                                    <i class="bi bi-people-fill"></i> 互動提示詞
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#fixed-prompt-modal">
+                                                    <i class="bi bi-pin-angle-fill"></i> 固定提示詞
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
+<!-- END: 提示詞選項按鈕區塊 -->
                                     <div class="mb-3">
                                         <div class="d-grid">
                                             <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#negative-prompt-modal">
@@ -783,6 +790,25 @@
         </div>
     </div>
 
+    <!-- [v19.2 新增] 互動提示詞 Modal -->
+    <div class="modal fade" id="interaction-prompt-modal" tabindex="-1" aria-labelledby="interactionPromptModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="interactionPromptModalLabel">編輯互動提示詞</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">此處的內容將作為一個獨立的、高優先級的節點，用於描述角色之間的**動作、關係或構圖**。例如：`(character_A patting character_B's head:1.3), tender moment`。</p>
+                    <textarea class="form-control" id="comfy-interaction-prompt" rows="8" placeholder="輸入描述角色互動的提示詞..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 圖片/影片 Modal (燈箱) 結構 -->
     <div id="image-modal" class="image-modal">
         <span id="modal-close-btn" class="image-modal-close">×</span>
@@ -1077,6 +1103,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1760611528"></script>
+    <script src="js/app.js?v=1760615380"></script>
 </body>
 </html>
