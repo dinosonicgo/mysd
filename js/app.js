@@ -40,9 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // --- 元素選擇器 (ComfyUI - 參數設定) ---
+// v18.3 (AI 构图助理): [功能擴展] 新增了 `interaction_ai_assist` 元素，用於獲取 AI 智慧構圖助理的複選框狀態。
 // v18.2 (多角色/互動節點): [功能擴展] 新增了 `interaction_prompt` 元素，用於獲取新的互動提示詞 Modal 中的內容。
 // v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
-// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
@@ -50,7 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
         positive_prompt: getById('comfy-positive-prompt'),
         negative_prompt: getById('comfy-negative-prompt'),
         fixed_prompt: getById('comfy-fixed-prompt'),
-        interaction_prompt: getById('comfy-interaction-prompt'), // [v18.2 新增]
+        interaction_prompt: getById('comfy-interaction-prompt'),
+        interaction_ai_assist: getById('interaction-ai-assist-checkbox'), // [v18.3 新增]
         fixed_prompt_prepend: getById('fixed-prompt-prepend'),
         fixed_prompt_append: getById('fixed-prompt-append'),
         seed: getById('comfy-seed'),
@@ -717,9 +718,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
+// v18.3 (AI 构图助理): [功能擴展] 在儲存的設定中增加了 `interaction_ai_assist` 欄位，以持久化 AI 助理的啟用狀態。
 // v18.2 (多角色/互動節點): [功能擴展] 在儲存的設定中增加了 `interaction_prompt` 欄位，以持久化使用者的互動提示詞。
 // v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
-// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     async function saveSettings() {
         const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
         const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
@@ -731,7 +732,8 @@ document.addEventListener('DOMContentLoaded', () => {
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value : '',
-            interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value : '', // [v18.2 新增]
+            interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value : '',
+            interaction_ai_assist: comfyFormElements.interaction_ai_assist ? comfyFormElements.interaction_ai_assist.checked : false, // [v18.3 新增]
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             seed: comfyFormElements.seed ? comfyFormElements.seed.value : 0,
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
@@ -770,10 +772,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 // 函式功能：將當前介面上的所有參數設定儲存到後端
 
+
+
+
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+// v18.3 (AI 构图助理): [功能擴展] 增加了對 `interaction_ai_assist` 的載入邏輯，以恢復 AI 助理的啟用狀態。
 // v18.2 (多角色/互動節點): [功能擴展] 增加了對 `interaction_prompt` 的載入邏輯，將儲存的互動提示詞填充到新的 Modal 中。
 // v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
-// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
@@ -796,7 +801,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
             if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
-            if (comfyFormElements.interaction_prompt) comfyFormElements.interaction_prompt.value = settings.interaction_prompt || ''; // [v18.2 新增]
+            if (comfyFormElements.interaction_prompt) comfyFormElements.interaction_prompt.value = settings.interaction_prompt || '';
+            if (typeof settings.interaction_ai_assist === 'boolean' && comfyFormElements.interaction_ai_assist) {
+                comfyFormElements.interaction_ai_assist.checked = settings.interaction_ai_assist;
+            }
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
             
@@ -869,6 +877,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+
+
+
     
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
@@ -1635,9 +1646,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+// v18.3 (AI 构图助理): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_ai_assist` 欄位，用於告知後端是否啟用 AI 智慧構圖助理。
 // v18.2 (多角色/互動節點): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_prompt` 欄位，其內容來自新的互動提示詞 Modal。
 // v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
-// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1672,7 +1683,8 @@ document.addEventListener('DOMContentLoaded', () => {
             main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
-            interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value.trim() : '', // [v18.2 新增]
+            interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value.trim() : '',
+            interaction_ai_assist: comfyFormElements.interaction_ai_assist ? comfyFormElements.interaction_ai_assist.checked : false, // [v18.3 新增]
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
             seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
@@ -1761,7 +1773,10 @@ document.addEventListener('DOMContentLoaded', () => {
             resetUI();
         }
     }
-// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成请求
+// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+
+
+
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
@@ -2860,7 +2875,48 @@ document.addEventListener('DOMContentLoaded', () => {
         if (inpaintSaveMaskBtn) {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
+
+                // [v18.3 新增] 互動提示詞區域按鈕的事件監聽器
+        const regionButtons = document.querySelectorAll('.region-btn');
+        const interactionTextarea = comfyFormElements.interaction_prompt;
+        if (regionButtons && interactionTextarea) {
+            // 注意：這裡的中文必須與 HTML 中的按鈕文字匹配，
+            // 但後端解析的是 data-region 的英文值，所以這裡只是為了插入文本
+            const regionTranslations = {
+                'left': '左半邊', 'right': '右半邊', 'top': '上半邊', 'bottom': '下半邊',
+                'center': '中央', 'top-left': '左上角', 'top-right': '右上角',
+                'bottom-left': '左下角', 'bottom-right': '右下角'
+            };
+
+            regionButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const region = button.dataset.region;
+                    // 我們直接使用英文關鍵字，因為後端是按英文解析的
+                    const textToInsert = `AREA(${region}): `;
+                    
+                    // 在當前光標位置插入文本
+                    const start = interactionTextarea.selectionStart;
+                    const end = interactionTextarea.selectionEnd;
+                    const text = interactionTextarea.value;
+                    const before = text.substring(0, start);
+                    const after = text.substring(end, text.length);
+                    
+                    // 如果目前行為空，或前一行是換行，則直接插入；否則，先換行再插入
+                    const needsNewline = before.length > 0 && !before.endsWith('\n') && before.trim() !== '';
+                    interactionTextarea.value = before + (needsNewline ? '\n' : '') + textToInsert + after;
+                    
+                    // 將光標移動到插入文本的末尾
+                    const newCursorPos = start + (needsNewline ? 1 : 0) + textToInsert.length;
+                    interactionTextarea.selectionStart = newCursorPos;
+                    interactionTextarea.selectionEnd = newCursorPos;
+                    interactionTextarea.focus();
+                });
+            });
+        }
     }
+    // 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
+
+
     
     initialize();
 });

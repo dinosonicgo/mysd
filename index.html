@@ -318,7 +318,7 @@
                                                     <label class="form-check-label" for="comfy-ai-optimize-checkbox">AI 優化提示詞</label>
                                                 </div>
                                             </fieldset>
-                                            <!-- [v19.2 新增] 增加按鈕之間的間距 -->
+                                            <!-- [v19.3 新增] 按鈕組，用於放置互動和固定提示詞按鈕 -->
                                             <div class="btn-group" role="group">
                                                 <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#interaction-prompt-modal">
                                                     <i class="bi bi-people-fill"></i> 互動提示詞
@@ -792,17 +792,45 @@
         </div>
     </div>
 
-    <!-- [v19.2 新增] 互動提示詞 Modal -->
+<!-- START: 互動提示詞 Modal (v19.3 新版) -->
     <div class="modal fade" id="interaction-prompt-modal" tabindex="-1" aria-labelledby="interactionPromptModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="interactionPromptModalLabel">編輯互動提示詞</h5>
+                    <h5 class="modal-title" id="interactionPromptModalLabel">編輯互動與構圖提示詞</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small">此處的內容將作為一個獨立的、高優先級的節點，用於描述角色之間的**動作、關係或構圖**。例如：`(character_A patting character_B's head:1.3), tender moment`。</p>
-                    <textarea class="form-control" id="comfy-interaction-prompt" rows="8" placeholder="輸入描述角色互動的提示詞..."></textarea>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="interaction-ai-assist-checkbox">
+                        <label class="form-check-label" for="interaction-ai-assist-checkbox">
+                            <strong>啟用 AI 智慧構圖助理</strong> (用自然語言描述場景)
+                        </label>
+                    </div>
+
+                    <textarea class="form-control" id="comfy-interaction-prompt" rows="8" placeholder="範例 (AI 助理模式): 目白麥昆在左邊微笑，東海帝皇在右邊比 V 手勢，背景是陽光明媚的公園。&#10;---&#10;範例 (手動模式):&#10;AREA(left): Mejiro McQueen, smiling&#10;AREA(right): Tokai Teio, v-sign&#10;2girls, in a sunny park"></textarea>
+                    
+                    <hr>
+                    <label class="form-label small text-muted">視覺化指令構建器 (點擊按鈕插入指令)</label>
+                    <div id="region-buttons-toolbar">
+                        <div class="btn-group btn-group-sm w-100 mb-2" role="group">
+                            <button type="button" class="btn btn-outline-primary region-btn" data-region="left">左半邊</button>
+                            <button type="button" class="btn btn-outline-primary region-btn" data-region="right">右半邊</button>
+                        </div>
+                        <div class="btn-group btn-group-sm w-100 mb-2" role="group">
+                            <button type="button" class="btn btn-outline-primary region-btn" data-region="top">上半邊</button>
+                            <button type="button" class="btn btn-outline-primary region-btn" data-region="bottom">下半邊</button>
+                        </div>
+                        <div class="btn-group btn-group-sm w-100 mb-2" role="group">
+                            <button type="button" class="btn btn-outline-secondary region-btn" data-region="top-left">左上角</button>
+                            <button type="button" class="btn btn-outline-secondary region-btn" data-region="top-right">右上角</button>
+                            <button type="button" class="btn btn-outline-secondary region-btn" data-region="bottom-left">左下角</button>
+                            <button type="button" class="btn btn-outline-secondary region-btn" data-region="bottom-right">右下角</button>
+                        </div>
+                         <div class="btn-group btn-group-sm w-100" role="group">
+                            <button type="button" class="btn btn-outline-info region-btn" data-region="center">中央</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-primary" data-bs-dismiss="modal">儲存</button>
@@ -810,6 +838,7 @@
             </div>
         </div>
     </div>
+<!-- END: 互動提示詞 Modal (v19.3 新版) -->
 
     <!-- 圖片/影片 Modal (燈箱) 結構 -->
     <div id="image-modal" class="image-modal">
@@ -1105,6 +1134,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1760622031"></script>
+    <script src="js/app.js?v=1760626028"></script>
 </body>
 </html>
