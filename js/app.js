@@ -1645,10 +1645,10 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
-// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+/// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+// v18.4 (AI 构图助理): [BUG修正] 修正了一个致命的遗漏。之前版本在构建发送给后端的 `payload` 对象时，忘记加入 `interaction_ai_assist` 字段。此修正确保了 AI 智慧构图助理复选框的勾选状态（true/false）能够被正确地发送到后端，从而允许后端根据此标志调用正确的构图分析逻辑。
 // v18.3 (AI 构图助理): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_ai_assist` 欄位，用於告知後端是否啟用 AI 智慧構圖助理。
 // v18.2 (多角色/互動節點): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_prompt` 欄位，其內容來自新的互動提示詞 Modal。
-// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1684,7 +1684,7 @@ document.addEventListener('DOMContentLoaded', () => {
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value.trim() : '',
-            interaction_ai_assist: comfyFormElements.interaction_ai_assist ? comfyFormElements.interaction_ai_assist.checked : false, // [v18.3 新增]
+            interaction_ai_assist: comfyFormElements.interaction_ai_assist ? comfyFormElements.interaction_ai_assist.checked : false, // [v18.4 修正] 补上缺失的字段
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
             seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
@@ -2917,7 +2917,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
 
 
-    
+
     initialize();
 });
 
