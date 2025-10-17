@@ -286,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
-    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，score_9, score_8_up, score_7_up，傑作，最高品質，超精細細節，8k，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
+    const DEFAULT_FIXED_PROMPT = "非常精緻美麗的臉，超非常精緻美麗的眼睛，傑作，最高品質，超精細細節，8k，高解析度，超高解析度，大光圈，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光線，景深，散景，柔和光線，體積光，光暈，色彩分級，獨特構圖";
 // --- 預設提示詞常數 ---
 
 // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
