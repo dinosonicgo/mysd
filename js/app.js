@@ -221,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const negativePromptSetDefaultBtn = getById('negative-prompt-set-default-btn');
     const negativePromptSetGuroBtn = getById('negative-prompt-set-guro-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
+    const fixedPromptSetDetailedBtn = getById('fixed-prompt-set-detailed-btn'); // [新增]
 
     // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
@@ -287,6 +288,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_FIXED_PROMPT = "非常美麗細緻的臉，非常美麗的眼睛，非常美麗細緻的細節，完美傑作，8K，UHD，大光圈";
+    // [新增] 極精細提示詞常數
+    const DEFAULT_FIXED_PROMPT_DETAILED = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，,(完美傑作:1.2)，(最高品質:1.2)，(超精細細節:1.1)，(8k:1.1)，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光線，景深，散景";
 // --- 預設提示詞常數 ---
 
 // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
@@ -2796,6 +2799,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fixedPromptSetDefaultBtn && comfyFormElements.fixed_prompt) {
             fixedPromptSetDefaultBtn.addEventListener('click', () => {
                 comfyFormElements.fixed_prompt.value = DEFAULT_FIXED_PROMPT;
+            });
+        }
+
+                // [新增] 為 "填入極精細" 按鈕綁定事件
+        if (fixedPromptSetDetailedBtn && comfyFormElements.fixed_prompt) {
+            fixedPromptSetDetailedBtn.addEventListener('click', () => {
+                comfyFormElements.fixed_prompt.value = DEFAULT_FIXED_PROMPT_DETAILED;
             });
         }
 
