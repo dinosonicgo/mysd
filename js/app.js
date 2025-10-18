@@ -1055,8 +1055,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 函式功能：獲取 ControlNet 相關資源並填充介面
     async function fetchAndPopulateControlNetResources() {
         try {
+            // 獲取 ControlNet 模型
             const modelsResponse = await fetchWithUserContext('/api/comfyui/controlnet_models');
             if (!modelsResponse.ok) throw new Error('無法獲取 ControlNet 模型');
             const models = await modelsResponse.json();
@@ -1070,17 +1072,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
+            // [v19.2 修正] 處理已停用的預處理器
             const preprocessorsResponse = await fetchWithUserContext('/api/comfyui/controlnet_preprocessors');
             if (!preprocessorsResponse.ok) throw new Error('無法獲取 ControlNet 預處理器');
             const preprocessors = await preprocessorsResponse.json();
             if (controlnetPreprocessorSelect) {
                 controlnetPreprocessorSelect.innerHTML = '';
-                preprocessors.forEach(proc => {
+                if (preprocessors.length > 0 && preprocessors[0].value === 'None') {
+                    // 如果後端返回停用訊息
                     const option = document.createElement('option');
-                    option.value = proc.value;
-                    option.textContent = proc.name;
+                    option.value = 'None';
+                    option.textContent = preprocessors[0].name; // "預處理器已停用..."
                     controlnetPreprocessorSelect.appendChild(option);
-                });
+                    controlnetPreprocessorSelect.disabled = true; // 禁用下拉選單
+                } else {
+                    preprocessors.forEach(proc => {
+                        const option = document.createElement('option');
+                        option.value = proc.value;
+                        option.textContent = proc.name;
+                        controlnetPreprocessorSelect.appendChild(option);
+                    });
+                    controlnetPreprocessorSelect.disabled = false;
+                }
             }
         } catch (error) {
             console.error('填充 ControlNet 資源時出錯:', error);
@@ -1089,6 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+// 函式功能：獲取 ControlNet 相關資源並填充介面
 
     async function fetchAndPopulateSamplers() {
         const samplerSelect = comfyFormElements.sampler_name;
