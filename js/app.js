@@ -8,6 +8,16 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+// 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
+    // --- 元素選擇器 (通用) ---
+    const getById = (id) => document.getElementById(id);
+    const navChat = getById('nav-chat');
+    const navComfyUI = getById('nav-comfyui');
+    const chatPage = getById('chat-page');
+    const comfyUIPage = getById('comfyui-page');
+    const pages = [chatPage, comfyUIPage];
+    const navLinks = [navChat, navComfyUI];
+
 
 // 函式功能：定義一個物件，用於儲存對所有 ComfyUI 表單元素的引用以及部分狀態
 // v18.4 (VAE 選擇): [功能擴展] 新增了 `vae: 'builtin'` 狀態，用於追蹤使用者的 VAE 選擇。
@@ -43,15 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 // 函式功能：定義一個物件，用於儲存對所有 ComfyUI 表單元素的引用以及部分狀態
 
-// 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
-    // --- 元素選擇器 (通用) ---
-    const getById = (id) => document.getElementById(id);
-    const navChat = getById('nav-chat');
-    const navComfyUI = getById('nav-comfyui');
-    const chatPage = getById('chat-page');
-    const comfyUIPage = getById('comfyui-page');
-    const pages = [chatPage, comfyUIPage];
-    const navLinks = [navChat, navComfyUI];
+
 
     // --- 元素選擇器 (AI 聊天) ---
     const chatStartBtn = getById('chat-start-btn');
