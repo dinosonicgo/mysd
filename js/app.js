@@ -8,6 +8,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+// 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
     // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
     const navChat = getById('nav-chat');
@@ -40,42 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // --- 元素選擇器 (ComfyUI - 參數設定) ---
-// v18.3 (AI 构图助理): [功能擴展] 新增了 `interaction_ai_assist` 元素，用於獲取 AI 智慧構圖助理的複選框狀態。
-// v18.2 (多角色/互動節點): [功能擴展] 新增了 `interaction_prompt` 元素，用於獲取新的互動提示詞 Modal 中的內容。
-// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
-    const comfyFormElements = {
-        model: null,
-        model_architecture: 'sdxl',
-        loras: [],
-        positive_prompt: getById('comfy-positive-prompt'),
-        negative_prompt: getById('comfy-negative-prompt'),
-        fixed_prompt: getById('comfy-fixed-prompt'),
-        interaction_prompt: getById('comfy-interaction-prompt'),
-        interaction_ai_assist: getById('interaction-ai-assist-checkbox'), // [v18.3 新增]
-        fixed_prompt_prepend: getById('fixed-prompt-prepend'),
-        fixed_prompt_append: getById('fixed-prompt-append'),
-        seed: getById('comfy-seed'),
-        seed_behavior: getById('comfy-seed-behavior'),
-        batch_size: getById('comfy-batch-size'),
-        steps: getById('comfy-steps'),
-        cfg: getById('comfy-cfg'),
-        sampler_name: getById('comfy-sampler-name'),
-        scheduler: getById('comfy-scheduler'),
-        optimize_positive: getById('comfy-optimize-positive-checkbox'),
-        ai_optimize: getById('comfy-ai-optimize-checkbox'),
-        translate_negative: getById('comfy-translate-negative-checkbox'),
-        enable_adetailer: getById('comfy-enable-adetailer'),
-        adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
-        translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
-        adetailer_steps: getById('comfy-adetailer-steps'),
-        denoise: getById('comfy-denoise'),
-    };
-// --- 元素選擇器 (ComfyUI - 參數設定) ---
-
-
-
-// --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfySelectedModelName = getById('comfy-selected-model-name');
+    const comfySelectedVaeName = getById('comfy-selected-vae-name'); // [新增]
     const selectedLoraListContainer = getById('selected-lora-list-container');
     const comfyRandomSeedBtn = getById('comfy-random-seed-btn');
     const comfyGenerateBtn = getById('comfy-generate-btn');
@@ -198,6 +165,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const modelSelectionModal = getById('model-selection-modal');
     const modelSelectionGrid = getById('model-selection-grid');
     let bsModelSelectionModal = null;
+    const vaeSelectionModal = getById('vae-selection-modal'); // [新增]
+    const vaeSelectionGrid = getById('vae-selection-grid'); // [新增]
+    let bsVaeSelectionModal = null; // [新增]
     const loraSelectionModal = getById('lora-selection-modal');
     const loraSelectionGrid = getById('lora-selection-grid');
     const loraConfirmSelectionBtn = getById('lora-confirm-selection-btn');
@@ -243,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     historyLoadingIndicator.id = 'history-loading-indicator';
     historyLoadingIndicator.className = 'text-center text-muted p-3 col-12';
     historyLoadingIndicator.style.display = 'none';
+// 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
 
     // --- 狀態變數 ---
     let userContext = { user_type: 'local' };
@@ -721,9 +692,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
+// v18.4 (VAE 選擇): [功能擴展] 在儲存的設定中增加了 `vae` 欄位，以持久化使用者的 VAE 選擇。
 // v18.3 (AI 构图助理): [功能擴展] 在儲存的設定中增加了 `interaction_ai_assist` 欄位，以持久化 AI 助理的啟用狀態。
 // v18.2 (多角色/互動節點): [功能擴展] 在儲存的設定中增加了 `interaction_prompt` 欄位，以持久化使用者的互動提示詞。
-// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
     async function saveSettings() {
         const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
         const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
@@ -760,7 +731,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
                 fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
                 augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            }
+            },
+            vae: comfyFormElements.vae, // [v18.4 新增]
         };
 
         try {
@@ -779,9 +751,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+// v18.4 (VAE 選擇): [功能擴展] 增加了對 `vae` 設定的載入邏輯，恢復使用者的 VAE 選擇。
 // v18.3 (AI 构图助理): [功能擴展] 增加了對 `interaction_ai_assist` 的載入邏輯，以恢復 AI 助理的啟用狀態。
 // v18.2 (多角色/互動節點): [功能擴展] 增加了對 `interaction_prompt` 的載入邏輯，將儲存的互動提示詞填充到新的 Modal 中。
-// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
@@ -801,6 +773,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderSelectedLoras();
             }
             
+            // [v18.4 新增] 載入 VAE 設定
+            if (settings.vae) {
+                selectVAE(settings.vae);
+            } else {
+                selectVAE('builtin'); // 如果沒有儲存的設定，則使用預設值
+            }
+
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
             if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
@@ -882,6 +861,32 @@ document.addEventListener('DOMContentLoaded', () => {
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
 
 
+
+// 函式功能：從後端獲取 VAE 列表並填充到 VAE 選擇 Modal 中
+    async function fetchAndPopulateVAEs() {
+        if (!vaeSelectionGrid) return;
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/vaes');
+            if (!response.ok) throw new Error(`無法獲取 VAEs: ${response.statusText}`);
+            const vaes = await response.json();
+            
+            vaeSelectionGrid.innerHTML = '';
+
+            // 優先添加「模型內建」選項
+            const builtinVaeCard = createModelCard({ name: '模型內建' }, 'vae');
+            builtinVaeCard.dataset.itemName = 'builtin'; // 特殊標識符
+            vaeSelectionGrid.appendChild(builtinVaeCard);
+
+            // 添加從 API 獲取的 VAEs
+            vaes.forEach(vaeName => {
+                const vaeCard = createModelCard({ name: vaeName }, 'vae');
+                vaeSelectionGrid.appendChild(vaeCard);
+            });
+        } catch (error) {
+            vaeSelectionGrid.innerHTML = `<p class="text-danger">錯誤: ${error.message}</p>`;
+        }
+    }
+// 函式功能：從後端獲取 VAE 列表並填充到 VAE 選擇 Modal 中
 
     
     async function updateLoraListForModel(modelName) {
@@ -1145,6 +1150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 函式功能：根據項目類型（模型、LoRA、VAE）創建一個可點擊的卡片元素
     function createModelCard(item, type) {
         const card = document.createElement('div');
         card.className = 'model-card';
@@ -1163,7 +1169,9 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onerror = () => { img.src = "https://via.placeholder.com/150x150.png?text=Preview+Error"; };
             imgContainer.appendChild(img);
         } else {
-            imgContainer.innerHTML = `<i class="bi ${item.name === 'None' ? 'bi-slash-circle' : 'bi-image'}"></i>`;
+            let iconClass = 'bi-image';
+            if (type === 'vae') iconClass = 'bi-eyedropper';
+            imgContainer.innerHTML = `<i class="bi ${iconClass}"></i>`;
         }
         
         const title = document.createElement('div');
@@ -1196,16 +1204,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     checkbox.dispatchEvent(new Event('change'));
                 }
             });
+        } else if (type === 'vae') { // [新增] VAE 卡片的點擊邏輯
+            card.addEventListener('click', () => {
+                selectVAE(card.dataset.itemName);
+            });
         }
         return card;
     }
+// 函式功能：根據項目類型（模型、LoRA、VAE）創建一個可點擊的卡片元素
 
+
+// 函式功能：處理使用者選擇 VAE 的操作
+    function selectVAE(vaeName) {
+        comfyFormElements.vae = vaeName;
+        if (comfySelectedVaeName) {
+            comfySelectedVaeName.textContent = (vaeName === 'builtin') ? '模型內建' : vaeName.split(/[\\/]/).pop();
+        }
+        if (bsVaeSelectionModal) {
+            bsVaeSelectionModal.hide();
+        }
+        console.log(`VAE 已選擇: ${vaeName}`);
+    }
+// 函式功能：處理使用者選擇 VAE 的操作
+
+
+
+// 函式功能：處理使用者選擇主模型的操作，並重設相關設定
     async function selectModel(item) {
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
         if (comfyFormElements.model !== newModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
+            // [新增] 更換主模型時，將 VAE 重設為預設的「模型內建」
+            selectVAE('builtin');
         }
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
@@ -1213,6 +1245,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
+// 函式功能：處理使用者選擇主模型的操作，並重設相關設定
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
@@ -1663,9 +1696,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 /// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+// v18.5 (VAE 選擇): [功能擴展] 在發送給後端的 payload 中，新增了 `vae` 欄位，其值來自 `comfyFormElements.vae`。
 // v18.4 (AI 构图助理): [BUG修正] 修正了一个致命的遗漏。之前版本在构建发送给后端的 `payload` 对象时，忘记加入 `interaction_ai_assist` 字段。此修正确保了 AI 智慧构图助理复选框的勾选状态（true/false）能够被正确地发送到后端，从而允许后端根据此标志调用正确的构图分析逻辑。
 // v18.3 (AI 构图助理): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_ai_assist` 欄位，用於告知後端是否啟用 AI 智慧構圖助理。
-// v18.2 (多角色/互動節點): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_prompt` 欄位，其內容來自新的互動提示詞 Modal。
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1729,7 +1762,8 @@ document.addEventListener('DOMContentLoaded', () => {
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
             is_video: isVideoMode,
-            video_params: null
+            video_params: null,
+            vae: comfyFormElements.vae, // [v18.5 新增]
         };
     
         if (isVideoMode) {
@@ -2421,6 +2455,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
     async function initialize() {
         console.log('應用程式已初始化 v18.1');
         
@@ -2460,6 +2495,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // --- 初始化 Bootstrap Modals ---
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
+        if (vaeSelectionModal) bsVaeSelectionModal = new bootstrap.Modal(vaeSelectionModal); // [新增]
         if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
         if (inpaintCanvasModalEl) bsInpaintCanvasModal = new bootstrap.Modal(inpaintCanvasModalEl);
         if (dependencyDownloadModalEl) bsDependencyDownloadModal = new bootstrap.Modal(dependencyDownloadModalEl);
@@ -2694,6 +2730,14 @@ document.addEventListener('DOMContentLoaded', () => {
             modelSelectionModal.addEventListener('show.bs.modal', async () => {
                 if (modelSelectionGrid) modelSelectionGrid.innerHTML = '<p class="text-muted">正在刷新模型列表...</p>';
                 await fetchAndPopulateCheckpoints();
+            });
+        }
+        
+        // [新增] VAE Modal 顯示時觸發列表載入
+        if (vaeSelectionModal) {
+            vaeSelectionModal.addEventListener('show.bs.modal', async () => {
+                if (vaeSelectionGrid) vaeSelectionGrid.innerHTML = '<p class="text-muted">正在載入 VAE 列表...</p>';
+                await fetchAndPopulateVAEs();
             });
         }
 
@@ -2938,7 +2982,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
-    // 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
+// 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
 
 
 
