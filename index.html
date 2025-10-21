@@ -251,7 +251,7 @@
 <!-- 函式功能：定義 ComfyUI 繪圖功能的主頁面結構 -->
         <div id="comfyui-page" class="page-content" style="display: block;">
             <div class="row">
-                <!-- 左側控制面板 -->
+                <!-- START: 左側控制面板 -->
                 <div class="col-lg-5">
                     <h4><i class="bi bi-gear-fill"></i> 控制面板</h4>
                     <div class="card">
@@ -601,7 +601,9 @@
                         </div>
                     </div>
                 </div>
-                <!-- 右側結果與歷史紀錄 -->
+                <!-- END: 左側控制面板 -->
+
+                <!-- START: 右側結果與歷史紀錄 -->
                 <div class="col-lg-7 mt-4 mt-lg-0">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h4><i class="bi bi-image-alt"></i> 生成結果</h4>
@@ -643,8 +645,8 @@
                         </div>
                     </div>
                 </div>
-                <!-- [v1.1 結構修正] 將此處錯誤的 </div> 移到下方正確的位置 -->
-            </div> <!-- [v1.1 結構修正] 這個 </div> 才是 row 的正確結尾 -->
+                <!-- END: 右側結果與歷史紀錄 -->
+            </div> <!-- [v1.2 結構修正] 這個 </div> 才是 <div class="row"> 的正確結尾 -->
         </div>
 <!-- 函式功能：定義 ComfyUI 繪圖功能的主頁面結構 -->
     </main>
@@ -867,7 +869,7 @@
     </div>
 <!-- END: 互動提示詞 Modal (v19.3 新版) -->
 
-    <!-- 圖片/影片 Modal (燈箱) 結構 -->
+<!-- 函式功能：定義用於顯示歷史紀錄詳情和生成參數的燈箱彈出視窗 -->
     <div id="image-modal" class="image-modal">
         <span id="modal-close-btn" class="image-modal-close">×</span>
         <div class="image-modal-dialog">
@@ -884,6 +886,11 @@
                     <div class="param-group">
                         <div class="param-label">主模型</div>
                         <p class="param-value" id="modal-model"></p>
+                    </div>
+                    <!-- [v1.4 VAE 顯示] 新增 VAE 顯示區塊 -->
+                    <div class="param-group">
+                        <div class="param-label">VAE</div>
+                        <p class="param-value" id="modal-vae"></p>
                     </div>
                     <div class="param-group">
                         <div class="param-label">LoRA(s)</div>
@@ -969,6 +976,7 @@
             </div>
         </div>
     </div>
+<!-- 函式功能：定義用於顯示歷史紀錄詳情和生成參數的燈箱彈出視窗 -->
 
     <!-- 採樣器指南 Modal -->
     <div class="modal fade" id="sampler-guide-modal" tabindex="-1" aria-labelledby="samplerGuideModalLabel" aria-hidden="true">
@@ -1161,6 +1169,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1761053184"></script>
+    <script src="js/app.js?v=1761056996"></script>
 </body>
 </html>

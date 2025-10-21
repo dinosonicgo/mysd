@@ -168,8 +168,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalPrevBtn = getById('modal-prev-btn');
     const modalNextBtn = getById('modal-next-btn');
     const modalDownloadBtn = getById('modal-download-btn');
+
+
+
+// 函式功能：定義一個物件，用於儲存對歷史紀錄燈箱中各個顯示元素的引用
     const modalParams = {
         model: getById('modal-model'),
+        vae: getById('modal-vae'), // [v1.4 VAE 顯示] 新增 VAE 元素選擇器
         lora_list: getById('modal-lora-list'),
         img2img_info: getById('modal-img2img-info'),
         source_image: getById('modal-source-image'),
@@ -197,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduler: getById('modal-scheduler'),
         optimization_mode: getById('modal-optimization-mode'),
     };
+// 函式功能：定義一個物件，用於儲存對歷史紀錄燈箱中各個顯示元素的引用
     
     // --- 元素選擇器 (模型/LoRA 選擇 Modal) ---
     const modelSelectionModal = getById('model-selection-modal');
@@ -1995,6 +2001,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 函式功能：根據索引顯示歷史紀錄項目於 Modal 燈箱中，並填充所有詳細參數
     function showImageInModal(index) {
         if (index < 0 || index >= currentHistoryList.length) return;
         currentModalIndex = index;
@@ -2034,6 +2041,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = item.params || {};
 
         modalParams.model.textContent = params.model ? params.model.split(/[\\/]/).pop() : '未知';
+        
+        // [v1.4 VAE 顯示] 新增邏輯來顯示 VAE 資訊
+        if (modalParams.vae) {
+            if (params.vae && params.vae !== 'builtin') {
+                modalParams.vae.textContent = params.vae.split(/[\\/]/).pop();
+            } else {
+                modalParams.vae.textContent = '模型內建';
+            }
+        }
         
         modalParams.lora_list.innerHTML = '';
         if (params.loras && params.loras.length > 0) {
@@ -2101,6 +2117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (imageModal) imageModal.style.display = 'block';
     }
+// 函式功能：根據索引顯示歷史紀錄項目於 Modal 燈箱中，並填充所有詳細參數
 
     function toggleSelectionMode(enable) {
         isSelectionMode = enable;
