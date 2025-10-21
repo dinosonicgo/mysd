@@ -8,6 +8,41 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+
+// 函式功能：定義一個物件，用於儲存對所有 ComfyUI 表單元素的引用以及部分狀態
+// v18.4 (VAE 選擇): [功能擴展] 新增了 `vae: 'builtin'` 狀態，用於追蹤使用者的 VAE 選擇。
+// v18.3 (AI 构图助理): [功能擴展] 新增了 `interaction_ai_assist` 元素，用於獲取 AI 智慧構圖助理的複選框狀態。
+// v18.2 (多角色/互動節點): [功能擴展] 新增了 `interaction_prompt` 元素，用於獲取新的互動提示詞 Modal 中的內容。
+    const comfyFormElements = {
+        model: null,
+        model_architecture: 'sdxl',
+        loras: [],
+        positive_prompt: getById('comfy-positive-prompt'),
+        negative_prompt: getById('comfy-negative-prompt'),
+        fixed_prompt: getById('comfy-fixed-prompt'),
+        interaction_prompt: getById('comfy-interaction-prompt'),
+        interaction_ai_assist: getById('interaction-ai-assist-checkbox'), // [v18.3 新增]
+        fixed_prompt_prepend: getById('fixed-prompt-prepend'),
+        fixed_prompt_append: getById('fixed-prompt-append'),
+        seed: getById('comfy-seed'),
+        seed_behavior: getById('comfy-seed-behavior'),
+        batch_size: getById('comfy-batch-size'),
+        steps: getById('comfy-steps'),
+        cfg: getById('comfy-cfg'),
+        sampler_name: getById('comfy-sampler-name'),
+        scheduler: getById('comfy-scheduler'),
+        optimize_positive: getById('comfy-optimize-positive-checkbox'),
+        ai_optimize: getById('comfy-ai-optimize-checkbox'),
+        translate_negative: getById('comfy-translate-negative-checkbox'),
+        enable_adetailer: getById('comfy-enable-adetailer'),
+        adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
+        translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
+        adetailer_steps: getById('comfy-adetailer-steps'),
+        denoise: getById('comfy-denoise'),
+        vae: 'builtin', // [v18.4 新增] 預設使用模型內建 VAE
+    };
+// 函式功能：定義一個物件，用於儲存對所有 ComfyUI 表單元素的引用以及部分狀態
+
 // 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
     // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
