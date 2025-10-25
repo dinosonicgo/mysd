@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
-    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，傑作，最高品質，超精細細節，8k，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
+    const DEFAULT_FIXED_PROMPT = "非常美麗的眼睛，完美傑作，8K，UHD，大光圈，最高畫質";
 // --- 預設提示詞常數 ---
 
 // 中文註釋：fetchWithUserContext函式開始
@@ -1553,6 +1553,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+// 中文註釋：deleteHistoryItem函式開始
+// 函式功能：從後端和前端刪除指定的歷史紀錄項目
     async function deleteHistoryItem(id, elementToRemove) {
         try {
             const response = await fetchWithUserContext('/api/comfyui/history', {
@@ -1567,8 +1569,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (header && header.classList.contains('history-date-header') && (!header.nextElementSibling || !header.nextElementSibling.classList.contains('history-item'))) {
                     header.remove();
                 }
-                currentHistoryList = currentHistoryList.filter(item => item.id !== id);
-                if (currentHistoryList.length === 0) renderHistory([], 'initial'); 
+
+                // [v2.1 修正] 從當前裝置的快取中移除項目
+                const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+                if (deviceHistoryCache[deviceId]) {
+                    deviceHistoryCache[deviceId].items = deviceHistoryCache[deviceId].items.filter(item => item.id !== id);
+                    if (deviceHistoryCache[deviceId].items.length === 0) {
+                         renderHistory([]); // 如果列表為空，重新渲染以顯示提示
+                    }
+                }
+                 
             } else { 
                 throw new Error(result.detail || '刪除失敗'); 
             }
@@ -1576,6 +1586,8 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`刪除失敗: ${error.message}`); 
         }
     }
+// 函式功能：從後端和前端刪除指定的歷史紀錄項目
+// 中文註釋：deleteHistoryItem函式結束
     
     function urlBase64ToUint8Array(base64String) {
         const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -1978,10 +1990,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 中文註釋：showImageInModal函式開始
+// 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
     function showImageInModal(index) {
-        if (index < 0 || index >= currentHistoryList.length) return;
+        // [v2.1 修正] 從快取中獲取當前裝置的正確歷史列表
+        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+        const currentList = deviceHistoryCache[deviceId] ? deviceHistoryCache[deviceId].items : [];
+
+        if (index < 0 || index >= currentList.length) return;
         currentModalIndex = index;
-        const item = currentHistoryList[index];
+        const item = currentList[index];
         
         if (!item) {
             console.error("嘗試在燈箱中顯示一個無效的歷史紀錄項目。");
@@ -2080,10 +2098,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (modalPrevBtn) modalPrevBtn.style.display = index > 0 ? 'block' : 'none';
-        if (modalNextBtn) modalNextBtn.style.display = index < currentHistoryList.length - 1 ? 'block' : 'none';
+        if (modalNextBtn) modalNextBtn.style.display = index < currentList.length - 1 ? 'block' : 'none';
         
         if (imageModal) imageModal.style.display = 'block';
     }
+// 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
+// 中文註釋：showImageInModal函式結束
 
     function toggleSelectionMode(enable) {
         isSelectionMode = enable;
