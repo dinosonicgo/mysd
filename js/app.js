@@ -229,6 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const deviceSelectionList = getById('device-selection-list');
     let bsGmLoginModal = null;
 
+    // --- 元素選擇器 (歷史紀錄) ---
     const historyLoadingIndicator = document.createElement('div');
     historyLoadingIndicator.id = 'history-loading-indicator';
     historyLoadingIndicator.className = 'text-center text-muted p-3 col-12';
@@ -259,6 +260,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let dependencyModelsStatus = {};
     let chatWs = null;
     let clientId = '';
+    let deviceHistoryCache = {};
+    let currentHistoryObserver = null;
+
+
+
+
 
     // 繪圖遮罩狀態變數
     let isDrawing = false;
@@ -280,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，傑作，最高品質，超精細細節，8k，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
 // --- 預設提示詞常數 ---
 
+// 中文註釋：fetchWithUserContext函式開始
 // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
 // v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
 // v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
@@ -295,7 +303,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetch(fullUrl, options);
     }
 // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
+// 中文註釋：fetchWithUserContext函式結束
     
+// 中文註釋：checkDeviceStatus函式開始
 // 函式功能：即時檢測指定裝置的在線狀態
 // v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
 // v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
@@ -324,8 +334,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：即時檢測指定裝置的在線狀態
+// 中文註釋：checkDeviceStatus函式結束
 
-    // --- 核心函式: 裝置切換與資料載入 ---
+
+
+// 中文註釋：switchDevice函式開始
+// 函式功能：處理切換到指定裝置的邏輯
     async function switchDevice(deviceId) {
         if (!sharedConfig.devices[deviceId] || sharedConfig.devices[deviceId].status !== 'online') {
             alert(`裝置 ${deviceId} 目前不在線或無法連接。`);
@@ -346,7 +360,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.style.cursor = 'default';
         console.log(`已成功切換到 ${deviceId}。`);
     }
+// 函式功能：處理切換到指定裝置的邏輯
+// 中文註釋：switchDevice函式結束
     
+// 中文註釋：reloadDataForActiveDevice函式開始
+// 函式功能：為當前啟用的裝置重新載入所有相關資料
     async function reloadDataForActiveDevice() {
         console.log(`正在為當前裝置 ${activeDeviceUrl} 重新載入所有資料...`);
         
@@ -365,7 +383,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
         console.log("資料重新載入完成。");
     }
+// 函式功能：為當前啟用的裝置重新載入所有相關資料
+// 中文註釋：reloadDataForActiveDevice函式結束
 
+
+
+
+
+// 中文註釋：loadSharedConfigAndInitialize函式開始
 // 函式功能：載入共享設定檔並初始化應用程式
     async function loadSharedConfigAndInitialize() {
         try {
@@ -431,7 +456,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：載入共享設定檔並初始化應用程式
+// 中文註釋：loadSharedConfigAndInitialize函式結束
 
+// 中文註釋：updateDeviceSelectorUI函式開始
+// 函式功能：更新裝置選擇器和使用者狀態的 UI 顯示
     function updateDeviceSelectorUI(currentDeviceId) {
         if (!userStatusDisplay || !gmLoginIcon) return;
     
@@ -478,6 +506,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
         }
     }
+// 函式功能：更新裝置選擇器和使用者狀態的 UI 顯示
+// 中文註釋：updateDeviceSelectorUI函式結束
 
     // --- 頁面切換邏輯 ---
     function switchPage(pageIdToShow) {
@@ -1257,9 +1287,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 中文註釋：addHistoryItemToGrid函式開始
 // 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
     function addHistoryItemToGrid(item) {
         if (!comfyHistoryGrid) return;
+
+        // 如果載入指示器存在，先移除它，我們會在所有項目添加完畢後再把它加到末尾
+        const existingIndicator = getById('history-loading-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
 
         const historyItemDiv = document.createElement('div');
         historyItemDiv.className = 'history-item';
@@ -1295,7 +1332,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isSelectionMode) {
                 toggleItemSelection(historyItemDiv, item.id);
             } else {
-                currentModalIndex = currentHistoryList.findIndex(i => i.id === item.id);
+                // 從快取中找到正確的列表來計算索引
+                const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+                const currentList = deviceHistoryCache[deviceId] ? deviceHistoryCache[deviceId].items : [];
+                currentModalIndex = currentList.findIndex(i => i.id === item.id);
+
                 if (currentModalIndex !== -1) {
                     showImageInModal(currentModalIndex);
                 }
@@ -1314,34 +1355,39 @@ document.addEventListener('DOMContentLoaded', () => {
         historyItemDiv.prepend(mediaElement);
         historyItemDiv.append(selectionOverlay, deleteBtn);
 
-        // 將創建好的元素直接附加到 grid 容器的末尾
         comfyHistoryGrid.appendChild(historyItemDiv);
 
         return historyItemDiv;
     }
 // 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
+// 中文註釋：addHistoryItemToGrid函式結束
 
+
+
+
+// 中文註釋：fetchHistory函式開始
 // 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
     async function fetchHistory(mode = 'initial') {
-        // 如果正在載入中 (且不是請求最新紀錄)，則直接返回以避免重複請求
         if (isLoadingHistory && mode !== 'newer') return [];
         isLoadingHistory = true;
-        
-        // 只有在請求舊紀錄時才顯示載入提示
+
         if (mode !== 'newer' && historyLoadingIndicator) {
             historyLoadingIndicator.textContent = '正在載入...';
             historyLoadingIndicator.style.display = 'block';
-            if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
         }
 
-        // 根據模式構建 API 的 URL
+        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+
+        if (!deviceHistoryCache[deviceId]) {
+            deviceHistoryCache[deviceId] = { items: [], hasMore: true };
+        }
+        const cache = deviceHistoryCache[deviceId];
+
         let url = '/api/comfyui/history?limit=30';
-        if (mode === 'older' && currentHistoryList.length > 0) {
-            // 請求比當前最舊紀錄還要早的紀錄
-            url += `&before_timestamp=${encodeURIComponent(currentHistoryList[currentHistoryList.length - 1].created_at)}`;
-        } else if (mode === 'newer' && currentHistoryList.length > 0) {
-            // 請求比當前最新紀錄還要新的紀錄
-            url = `/api/comfyui/history?after_timestamp=${encodeURIComponent(currentHistoryList[0].created_at)}`;
+        if (mode === 'older' && cache.items.length > 0) {
+            url += `&before_timestamp=${encodeURIComponent(cache.items[cache.items.length - 1].created_at)}`;
+        } else if (mode === 'newer' && cache.items.length > 0) {
+            url = `/api/comfyui/history?after_timestamp=${encodeURIComponent(cache.items[0].created_at)}`;
         }
         
         try {
@@ -1349,18 +1395,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error(`無法獲取歷史紀錄: ${response.statusText}`);
             const items = await response.json();
             
-            // 將獲取的數據交給 renderHistory 處理
-            renderHistory(items, mode);
+            if (mode === 'newer') {
+                cache.items.unshift(...items);
+                if (items.length > 0) renderHistory(cache.items); // 只有在有新項目時才重新渲染整個列表
+            } else {
+                cache.items.push(...items);
+                if (mode === 'initial') {
+                    renderHistory(cache.items);
+                }
+            }
             
-            // 如果是請求舊紀錄或初次載入，更新 hasMoreHistory 狀態
-            if (mode === 'older' || mode === 'initial') {
-                hasMoreHistory = items.length >= 30; // 如果返回的數量小於請求數量，代表到底了
-                if (!hasMoreHistory && historyLoadingIndicator) {
+            if (mode !== 'newer') {
+                cache.hasMore = items.length >= 30;
+                if (!cache.hasMore) {
                     historyLoadingIndicator.textContent = '沒有更多紀錄了';
-                    // 讓 "沒有更多紀錄了" 訊息繼續顯示
-                    if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
-                } else if (historyLoadingIndicator) {
-                    historyLoadingIndicator.style.display = 'none'; // 載入成功後隱藏
+                    if (currentHistoryObserver) currentHistoryObserver.disconnect();
                 }
             }
             return items;
@@ -1371,41 +1420,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return [];
         } finally {
-            // 只有在請求舊紀錄或初次載入完成後才重設載入旗標
-            if (mode !== 'newer') {
-                isLoadingHistory = false;
-            }
+            isLoadingHistory = false;
         }
     }
 // 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
+// 中文註釋：fetchHistory函式結束
 
+// 中文註釋：renderHistory函式開始
 // 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
-    function renderHistory(items, mode) {
-        if (!comfyHistoryGrid || !items) return;
+    function renderHistory(items) {
+        if (!comfyHistoryGrid) return;
         
-        // 根據模式更新核心資料列表 currentHistoryList
-        if (mode === 'initial') {
-            currentHistoryList = items;
-        } else if (mode === 'older') {
-            currentHistoryList.push(...items);
-        } else if (mode === 'newer') {
-            // 將新項目插入到列表開頭
-            currentHistoryList.unshift(...items);
-        }
-        
-        // 清空當前的 grid 內容，準備重新渲染
         comfyHistoryGrid.innerHTML = '';
         
-        // 如果處理後列表為空，顯示提示訊息
-        if (currentHistoryList.length === 0) {
+        if (!items || items.length === 0) {
             comfyHistoryGrid.innerHTML = '<p class="text-muted text-center col-12">沒有歷史紀錄。</p>';
-            hasMoreHistory = false;
             return;
         }
 
-        // 按日期對所有歷史紀錄進行分組
         const groupedByDate = {};
-        currentHistoryList.forEach(item => {
+        items.forEach(item => {
             const date = new Date(item.created_at).toLocaleDateString();
             if (!groupedByDate[date]) {
                 groupedByDate[date] = [];
@@ -1413,56 +1447,111 @@ document.addEventListener('DOMContentLoaded', () => {
             groupedByDate[date].push(item);
         });
 
-        // 按日期降序排序並渲染
-        Object.keys(groupedByDate).sort((a, b) => new Date(b) - new Date(a)).forEach(date => {
-            // 為每個日期創建一個標題
+        // 按日期降序排序並渲染 (從新到舊)
+        const sortedDates = Object.keys(groupedByDate).sort((a, b) => new Date(b) - new Date(a));
+
+        sortedDates.forEach(date => {
             const header = document.createElement('div');
             header.className = 'history-date-header';
-            header.dataset.date = date;
             header.textContent = date;
             comfyHistoryGrid.appendChild(header);
             
-            // 渲染該日期的所有項目
             groupedByDate[date].forEach(item => {
-                // 呼叫 addHistoryItemToGrid 創建並附加 DOM 元素
                 addHistoryItemToGrid(item);
             });
         });
     }
 // 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
+// 中文註釋：renderHistory函式結束
 
-// 函式功能：處理歷史紀錄網格的滾動事件，在接近底部時觸發載入更多舊紀錄
-    async function handleHistoryScroll() {
-        // 如果正在載入中，或者已經沒有更多歷史紀錄了，就直接返回
-        if (isLoadingHistory || !hasMoreHistory) return;
-        
-        // 確保 comfyHistoryGrid 元素存在
-        if (!comfyHistoryGrid) return;
 
-        const { scrollTop, scrollHeight, clientHeight } = comfyHistoryGrid;
-        // 當滾動條距離底部小於 400px 時，觸發載入更多舊紀錄
-        if (scrollHeight - scrollTop - clientHeight < 400) {
-            await fetchHistory('older');
-        }
-    }
-// 函式功能：處理歷史紀錄網格的滾動事件，在接近底部時觸發載入更多舊紀錄
 
+
+
+
+// 中文註釋：initializeHistory函式開始
 // 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
     async function initializeHistory() {
         if (!comfyHistoryGrid) return;
-        
-        // [v18.14 根本性修正] 移除 replaceWith，改用標準的事件監聽器管理模式
-        // 舊的監聽器（如果存在）會被移除，然後再添加新的，確保任何時候都只有一個有效的監聽器。
-        comfyHistoryGrid.removeEventListener('scroll', handleHistoryScroll);
-        comfyHistoryGrid.addEventListener('scroll', handleHistoryScroll);
 
-        // 首次載入歷史紀錄
-        await fetchHistory('initial');
+        // [v3.0 效能優化] 中斷上一個裝置的觀察者
+        if (currentHistoryObserver) {
+            currentHistoryObserver.disconnect();
+            currentHistoryObserver = null;
+        }
         
-        // 應用之前儲存在 localStorage 中的高亮效果（如果有的話）
+        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+
+        // [v3.0 效能優化] 檢查裝置快取
+        if (deviceHistoryCache[deviceId] && deviceHistoryCache[deviceId].items.length > 0) {
+            console.log(`從快取載入 '${deviceId}' 的歷史紀錄...`);
+            renderHistory(deviceHistoryCache[deviceId].items);
+        } else {
+            // 如果沒有快取，則從網路獲取
+            await fetchHistory('initial');
+        }
+        
         applyPersistedHighlight();
+        
+        // [v3.0 行動裝置優化] 為當前裝置設定新的 IntersectionObserver
+        setupIntersectionObserver();
     }
 // 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
+// 中文註釋：initializeHistory函式結束
+
+
+
+
+// 中文註釋：setupIntersectionObserver函式開始
+// 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
+    function setupIntersectionObserver() {
+        if (currentHistoryObserver) currentHistoryObserver.disconnect();
+        
+        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+        const cache = deviceHistoryCache[deviceId];
+
+        if (!cache || !cache.hasMore) {
+            historyLoadingIndicator.textContent = '沒有更多紀錄了';
+            historyLoadingIndicator.style.display = 'block';
+            if(comfyHistoryGrid && !comfyHistoryGrid.contains(historyLoadingIndicator)) {
+                comfyHistoryGrid.appendChild(historyLoadingIndicator);
+            }
+            return;
+        }
+
+        const options = {
+            root: comfyHistoryGrid,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+
+        currentHistoryObserver = new IntersectionObserver(async (entries) => {
+            if (entries[0].isIntersecting && !isLoadingHistory && cache.hasMore) {
+                const newItems = await fetchHistory('older');
+                // 將新獲取的項目附加到網格中
+                newItems.forEach(item => {
+                    const existingItem = comfyHistoryGrid.querySelector(`.history-item[data-item-id="${item.id}"]`);
+                    if (!existingItem) {
+                        const newItemElement = addHistoryItemToGrid(item);
+                        // 將哨兵元素移到最後
+                        comfyHistoryGrid.appendChild(historyLoadingIndicator);
+                    }
+                });
+            }
+        }, options);
+
+        historyLoadingIndicator.textContent = '正在載入...';
+        historyLoadingIndicator.style.display = 'block';
+        if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
+        currentHistoryObserver.observe(historyLoadingIndicator);
+    }
+// 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
+// 中文註釋：setupIntersectionObserver函式結束
+
+
+
+
+
 
     async function deleteHistoryItem(id, elementToRemove) {
         try {
@@ -2386,6 +2475,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+// 中文註釋：initialize函式開始
+// 函式功能：應用程式的主初始化函式
     async function initialize() {
         console.log('應用程式已初始化 v18.1');
         
@@ -2419,6 +2510,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
+        // [v2.0 核心修正] 呼叫全新的多裝置啟動流程
         await loadSharedConfigAndInitialize();
         
         setInterval(pollQueueStatus, 3000); 
@@ -2432,7 +2524,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (gmLoginModalEl) bsGmLoginModal = new bootstrap.Modal(gmLoginModalEl);
         if (chatModalEl) bsChatModal = new bootstrap.Modal(chatModalEl);
 
-        // --- 事件監聽器 ---
+        // --- 事件監聽器 (與裝置無關的全域監聽) ---
 
         // 聊天
         if (chatStartBtn) chatStartBtn.addEventListener('click', startChatService);
@@ -2491,7 +2583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // ComfyUI
+        // ComfyUI 全域控制
         if(comfyGenerateBtn) comfyGenerateBtn.addEventListener('click', handleGenerateClick);
         if(comfyRandomSeedBtn) {
             comfyRandomSeedBtn.addEventListener('click', () => {
@@ -2858,6 +2950,8 @@ document.addEventListener('DOMContentLoaded', () => {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
     }
+// 函式功能：應用程式的主初始化函式
+// 中文註釋：initialize函式結束
     
     initialize();
 });
