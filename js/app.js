@@ -8,7 +8,6 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-// 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
     // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
     const navChat = getById('nav-chat');
@@ -17,43 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const comfyUIPage = getById('comfyui-page');
     const pages = [chatPage, comfyUIPage];
     const navLinks = [navChat, navComfyUI];
-
-
-// 函式功能：定義一個物件，用於儲存對所有 ComfyUI 表單元素的引用以及部分狀態
-// v18.4 (VAE 選擇): [功能擴展] 新增了 `vae: 'builtin'` 狀態，用於追蹤使用者的 VAE 選擇。
-// v18.3 (AI 构图助理): [功能擴展] 新增了 `interaction_ai_assist` 元素，用於獲取 AI 智慧構圖助理的複選框狀態。
-// v18.2 (多角色/互動節點): [功能擴展] 新增了 `interaction_prompt` 元素，用於獲取新的互動提示詞 Modal 中的內容。
-    const comfyFormElements = {
-        model: null,
-        model_architecture: 'sdxl',
-        loras: [],
-        positive_prompt: getById('comfy-positive-prompt'),
-        negative_prompt: getById('comfy-negative-prompt'),
-        fixed_prompt: getById('comfy-fixed-prompt'),
-        interaction_prompt: getById('comfy-interaction-prompt'),
-        interaction_ai_assist: getById('interaction-ai-assist-checkbox'), // [v18.3 新增]
-        fixed_prompt_prepend: getById('fixed-prompt-prepend'),
-        fixed_prompt_append: getById('fixed-prompt-append'),
-        seed: getById('comfy-seed'),
-        seed_behavior: getById('comfy-seed-behavior'),
-        batch_size: getById('comfy-batch-size'),
-        steps: getById('comfy-steps'),
-        cfg: getById('comfy-cfg'),
-        sampler_name: getById('comfy-sampler-name'),
-        scheduler: getById('comfy-scheduler'),
-        optimize_positive: getById('comfy-optimize-positive-checkbox'),
-        ai_optimize: getById('comfy-ai-optimize-checkbox'),
-        translate_negative: getById('comfy-translate-negative-checkbox'),
-        enable_adetailer: getById('comfy-enable-adetailer'),
-        adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
-        translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
-        adetailer_steps: getById('comfy-adetailer-steps'),
-        denoise: getById('comfy-denoise'),
-        vae: 'builtin', // [v18.4 新增] 預設使用模型內建 VAE
-    };
-// 函式功能：定義一個物件，用於儲存對所有 ComfyUI 表單元素的引用以及部分狀態
-
-
 
     // --- 元素選擇器 (AI 聊天) ---
     const chatStartBtn = getById('chat-start-btn');
@@ -78,8 +40,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // --- 元素選擇器 (ComfyUI - 參數設定) ---
+    const comfyFormElements = {
+        model: null,
+        model_architecture: 'sdxl',
+        loras: [],
+        positive_prompt: getById('comfy-positive-prompt'),
+        negative_prompt: getById('comfy-negative-prompt'),
+        fixed_prompt: getById('comfy-fixed-prompt'),
+        fixed_prompt_prepend: getById('fixed-prompt-prepend'),
+        fixed_prompt_append: getById('fixed-prompt-append'),
+        seed: getById('comfy-seed'),
+        seed_behavior: getById('comfy-seed-behavior'),
+        batch_size: getById('comfy-batch-size'),
+        steps: getById('comfy-steps'),
+        cfg: getById('comfy-cfg'),
+        sampler_name: getById('comfy-sampler-name'),
+        scheduler: getById('comfy-scheduler'),
+        optimize_positive: getById('comfy-optimize-positive-checkbox'),
+        ai_optimize: getById('comfy-ai-optimize-checkbox'),
+        translate_negative: getById('comfy-translate-negative-checkbox'),
+        enable_adetailer: getById('comfy-enable-adetailer'),
+        adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
+        translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
+        adetailer_steps: getById('comfy-adetailer-steps'),
+        denoise: getById('comfy-denoise'),
+    };
+// --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfySelectedModelName = getById('comfy-selected-model-name');
-    const comfySelectedVaeName = getById('comfy-selected-vae-name'); // [新增]
     const selectedLoraListContainer = getById('selected-lora-list-container');
     const comfyRandomSeedBtn = getById('comfy-random-seed-btn');
     const comfyGenerateBtn = getById('comfy-generate-btn');
@@ -168,13 +155,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalPrevBtn = getById('modal-prev-btn');
     const modalNextBtn = getById('modal-next-btn');
     const modalDownloadBtn = getById('modal-download-btn');
-
-
-
-// 函式功能：定義一個物件，用於儲存對歷史紀錄燈箱中各個顯示元素的引用
     const modalParams = {
         model: getById('modal-model'),
-        vae: getById('modal-vae'), // [v1.4 VAE 顯示] 新增 VAE 元素選擇器
         lora_list: getById('modal-lora-list'),
         img2img_info: getById('modal-img2img-info'),
         source_image: getById('modal-source-image'),
@@ -202,15 +184,11 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduler: getById('modal-scheduler'),
         optimization_mode: getById('modal-optimization-mode'),
     };
-// 函式功能：定義一個物件，用於儲存對歷史紀錄燈箱中各個顯示元素的引用
     
     // --- 元素選擇器 (模型/LoRA 選擇 Modal) ---
     const modelSelectionModal = getById('model-selection-modal');
     const modelSelectionGrid = getById('model-selection-grid');
     let bsModelSelectionModal = null;
-    const vaeSelectionModal = getById('vae-selection-modal'); // [新增]
-    const vaeSelectionGrid = getById('vae-selection-grid'); // [新增]
-    let bsVaeSelectionModal = null; // [新增]
     const loraSelectionModal = getById('lora-selection-modal');
     const loraSelectionGrid = getById('lora-selection-grid');
     const loraConfirmSelectionBtn = getById('lora-confirm-selection-btn');
@@ -234,7 +212,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const negativePromptSetDefaultBtn = getById('negative-prompt-set-default-btn');
     const negativePromptSetGuroBtn = getById('negative-prompt-set-guro-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
-    const fixedPromptSetDetailedBtn = getById('fixed-prompt-set-detailed-btn'); // [新增]
 
     // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
@@ -256,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
     historyLoadingIndicator.id = 'history-loading-indicator';
     historyLoadingIndicator.className = 'text-center text-muted p-3 col-12';
     historyLoadingIndicator.style.display = 'none';
-// 函式功能：定義所有需要從 DOM 中獲取的元素，並將其賦值給常數以便後續使用
 
     // --- 狀態變數 ---
     let userContext = { user_type: 'local' };
@@ -301,9 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
-    const DEFAULT_FIXED_PROMPT = "非常美麗細緻的臉，非常美麗的眼睛，非常美麗細緻的細節，完美傑作，8K，UHD，大光圈";
-    // [新增] 極精細提示詞常數
-    const DEFAULT_FIXED_PROMPT_DETAILED = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，,(完美傑作:1.2)，(最高品質:1.2)，(超精細細節:1.1)，(8k:1.1)，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光線，景深，散景";
+    const DEFAULT_FIXED_PROMPT = "超非常精緻美麗的臉，超非常精緻美麗的眼睛，傑作，最高品質，超精細細節，8k，高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
 // --- 預設提示詞常數 ---
 
 // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
@@ -735,9 +709,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
-// v18.4 (VAE 選擇): [功能擴展] 在儲存的設定中增加了 `vae` 欄位，以持久化使用者的 VAE 選擇。
-// v18.3 (AI 构图助理): [功能擴展] 在儲存的設定中增加了 `interaction_ai_assist` 欄位，以持久化 AI 助理的啟用狀態。
-// v18.2 (多角色/互動節點): [功能擴展] 在儲存的設定中增加了 `interaction_prompt` 欄位，以持久化使用者的互動提示詞。
     async function saveSettings() {
         const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
         const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
@@ -749,8 +720,6 @@ document.addEventListener('DOMContentLoaded', () => {
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value : '',
-            interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value : '',
-            interaction_ai_assist: comfyFormElements.interaction_ai_assist ? comfyFormElements.interaction_ai_assist.checked : false, // [v18.3 新增]
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             seed: comfyFormElements.seed ? comfyFormElements.seed.value : 0,
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
@@ -774,8 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
                 fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
                 augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            },
-            vae: comfyFormElements.vae, // [v18.4 新增]
+            }
         };
 
         try {
@@ -790,13 +758,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 // 函式功能：將當前介面上的所有參數設定儲存到後端
 
-
-
-
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
-// v18.4 (VAE 選擇): [功能擴展] 增加了對 `vae` 設定的載入邏輯，恢復使用者的 VAE 選擇。
-// v18.3 (AI 构图助理): [功能擴展] 增加了對 `interaction_ai_assist` 的載入邏輯，以恢復 AI 助理的啟用狀態。
-// v18.2 (多角色/互動節點): [功能擴展] 增加了對 `interaction_prompt` 的載入邏輯，將儲存的互動提示詞填充到新的 Modal 中。
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
@@ -816,20 +778,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderSelectedLoras();
             }
             
-            // [v18.4 新增] 載入 VAE 設定
-            if (settings.vae) {
-                selectVAE(settings.vae);
-            } else {
-                selectVAE('builtin'); // 如果沒有儲存的設定，則使用預設值
-            }
-
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
             if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
-            if (comfyFormElements.interaction_prompt) comfyFormElements.interaction_prompt.value = settings.interaction_prompt || '';
-            if (typeof settings.interaction_ai_assist === 'boolean' && comfyFormElements.interaction_ai_assist) {
-                comfyFormElements.interaction_ai_assist.checked = settings.interaction_ai_assist;
-            }
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
             
@@ -902,35 +853,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
-
-
-
-// 函式功能：從後端獲取 VAE 列表並填充到 VAE 選擇 Modal 中
-    async function fetchAndPopulateVAEs() {
-        if (!vaeSelectionGrid) return;
-        try {
-            const response = await fetchWithUserContext('/api/comfyui/vaes');
-            if (!response.ok) throw new Error(`無法獲取 VAEs: ${response.statusText}`);
-            const vaes = await response.json();
-            
-            vaeSelectionGrid.innerHTML = '';
-
-            // 優先添加「模型內建」選項
-            const builtinVaeCard = createModelCard({ name: '模型內建' }, 'vae');
-            builtinVaeCard.dataset.itemName = 'builtin'; // 特殊標識符
-            vaeSelectionGrid.appendChild(builtinVaeCard);
-
-            // 添加從 API 獲取的 VAEs
-            vaes.forEach(vaeName => {
-                const vaeCard = createModelCard({ name: vaeName }, 'vae');
-                vaeSelectionGrid.appendChild(vaeCard);
-            });
-        } catch (error) {
-            vaeSelectionGrid.innerHTML = `<p class="text-danger">錯誤: ${error.message}</p>`;
-        }
-    }
-// 函式功能：從後端獲取 VAE 列表並填充到 VAE 選擇 Modal 中
-
     
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
@@ -1050,17 +972,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
-// v18.2 (架構統一): [架構優化] 移除了前端所有關於模型架構 (architecture) 的判斷邏輯。現在前端將完全信任並直接使用後端 API (`/api/comfyui/checkpoints`) 返回的架構分類。此修改將架構判斷的權威來源統一到後端，簡化了前端程式碼，並從根本上避免了前後端判斷邏輯不一致可能導致的問題。
-// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
-// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
+            let checkpoints = await checkpointsResponse.json();
             
-            // [v18.2 修正] 直接使用後端返回的權威架構資訊，不再於前端進行重複判斷
-            const checkpoints = await checkpointsResponse.json();
-            
+            checkpoints = checkpoints.map(model => {
+                const modelNameLower = model.name.toLowerCase();
+
+                // [v18.13 修正] 擴展 SDXL 架構的識別範圍，新增'xl', 'il', 'noobai', 'nai', 'pony'等關鍵字
+                const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
+
+                if (modelNameLower.includes('qwen')) {
+                    model.architecture = 'qwen_gguf';
+                } else if (modelNameLower.includes('flux')) {
+                    model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
+                } else if (modelNameLower.includes('sd3')) {
+                    model.architecture = 'sd3';
+                } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
+                    // 如果包含任何 SDXL 家族的關鍵字，則統一歸類為 'sdxl'
+                    model.architecture = 'sdxl';
+                } else {
+                    // 對於其他所有模型，作為後備，將其視為 sd1.5
+                    model.architecture = 'sd15'; 
+                }
+                return model;
+            });
+
             if (modelSelectionGrid) {
                 modelSelectionGrid.innerHTML = '';
                 checkpoints.forEach(model => modelSelectionGrid.appendChild(createModelCard(model, 'model')));
@@ -1103,10 +1042,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// 函式功能：獲取 ControlNet 相關資源並填充介面
     async function fetchAndPopulateControlNetResources() {
         try {
-            // 獲取 ControlNet 模型
             const modelsResponse = await fetchWithUserContext('/api/comfyui/controlnet_models');
             if (!modelsResponse.ok) throw new Error('無法獲取 ControlNet 模型');
             const models = await modelsResponse.json();
@@ -1120,28 +1057,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            // [v19.2 修正] 處理已停用的預處理器
             const preprocessorsResponse = await fetchWithUserContext('/api/comfyui/controlnet_preprocessors');
             if (!preprocessorsResponse.ok) throw new Error('無法獲取 ControlNet 預處理器');
             const preprocessors = await preprocessorsResponse.json();
             if (controlnetPreprocessorSelect) {
                 controlnetPreprocessorSelect.innerHTML = '';
-                if (preprocessors.length > 0 && preprocessors[0].value === 'None') {
-                    // 如果後端返回停用訊息
+                preprocessors.forEach(proc => {
                     const option = document.createElement('option');
-                    option.value = 'None';
-                    option.textContent = preprocessors[0].name; // "預處理器已停用..."
+                    option.value = proc.value;
+                    option.textContent = proc.name;
                     controlnetPreprocessorSelect.appendChild(option);
-                    controlnetPreprocessorSelect.disabled = true; // 禁用下拉選單
-                } else {
-                    preprocessors.forEach(proc => {
-                        const option = document.createElement('option');
-                        option.value = proc.value;
-                        option.textContent = proc.name;
-                        controlnetPreprocessorSelect.appendChild(option);
-                    });
-                    controlnetPreprocessorSelect.disabled = false;
-                }
+                });
             }
         } catch (error) {
             console.error('填充 ControlNet 資源時出錯:', error);
@@ -1150,7 +1076,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-// 函式功能：獲取 ControlNet 相關資源並填充介面
 
     async function fetchAndPopulateSamplers() {
         const samplerSelect = comfyFormElements.sampler_name;
@@ -1193,7 +1118,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// 函式功能：根據項目類型（模型、LoRA、VAE）創建一個可點擊的卡片元素
     function createModelCard(item, type) {
         const card = document.createElement('div');
         card.className = 'model-card';
@@ -1212,9 +1136,7 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onerror = () => { img.src = "https://via.placeholder.com/150x150.png?text=Preview+Error"; };
             imgContainer.appendChild(img);
         } else {
-            let iconClass = 'bi-image';
-            if (type === 'vae') iconClass = 'bi-eyedropper';
-            imgContainer.innerHTML = `<i class="bi ${iconClass}"></i>`;
+            imgContainer.innerHTML = `<i class="bi ${item.name === 'None' ? 'bi-slash-circle' : 'bi-image'}"></i>`;
         }
         
         const title = document.createElement('div');
@@ -1247,40 +1169,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     checkbox.dispatchEvent(new Event('change'));
                 }
             });
-        } else if (type === 'vae') { // [新增] VAE 卡片的點擊邏輯
-            card.addEventListener('click', () => {
-                selectVAE(card.dataset.itemName);
-            });
         }
         return card;
     }
-// 函式功能：根據項目類型（模型、LoRA、VAE）創建一個可點擊的卡片元素
 
-
-// 函式功能：處理使用者選擇 VAE 的操作
-    function selectVAE(vaeName) {
-        comfyFormElements.vae = vaeName;
-        if (comfySelectedVaeName) {
-            comfySelectedVaeName.textContent = (vaeName === 'builtin') ? '模型內建' : vaeName.split(/[\\/]/).pop();
-        }
-        if (bsVaeSelectionModal) {
-            bsVaeSelectionModal.hide();
-        }
-        console.log(`VAE 已選擇: ${vaeName}`);
-    }
-// 函式功能：處理使用者選擇 VAE 的操作
-
-
-
-// 函式功能：處理使用者選擇主模型的操作，並重設相關設定
     async function selectModel(item) {
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
         if (comfyFormElements.model !== newModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
-            // [新增] 更換主模型時，將 VAE 重設為預設的「模型內建」
-            selectVAE('builtin');
         }
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
@@ -1288,7 +1186,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
-// 函式功能：處理使用者選擇主模型的操作，並重設相關設定
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
@@ -1738,10 +1635,7 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
-/// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
-// v18.5 (VAE 選擇): [功能擴展] 在發送給後端的 payload 中，新增了 `vae` 欄位，其值來自 `comfyFormElements.vae`。
-// v18.4 (AI 构图助理): [BUG修正] 修正了一个致命的遗漏。之前版本在构建发送给后端的 `payload` 对象时，忘记加入 `interaction_ai_assist` 字段。此修正确保了 AI 智慧构图助理复选框的勾选状态（true/false）能够被正确地发送到后端，从而允许后端根据此标志调用正确的构图分析逻辑。
-// v18.3 (AI 构图助理): [功能擴展] 在發送給後端的 payload 中，新增了 `interaction_ai_assist` 欄位，用於告知後端是否啟用 AI 智慧構圖助理。
+// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1776,8 +1670,6 @@ document.addEventListener('DOMContentLoaded', () => {
             main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
             video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
-            interaction_prompt: comfyFormElements.interaction_prompt ? comfyFormElements.interaction_prompt.value.trim() : '',
-            interaction_ai_assist: comfyFormElements.interaction_ai_assist ? comfyFormElements.interaction_ai_assist.checked : false, // [v18.4 修正] 补上缺失的字段
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
             seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
@@ -1805,8 +1697,7 @@ document.addEventListener('DOMContentLoaded', () => {
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
             is_video: isVideoMode,
-            video_params: null,
-            vae: comfyFormElements.vae, // [v18.5 新增]
+            video_params: null
         };
     
         if (isVideoMode) {
@@ -1868,9 +1759,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
-
-
-
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
@@ -2001,7 +1889,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// 函式功能：根據索引顯示歷史紀錄項目於 Modal 燈箱中，並填充所有詳細參數
     function showImageInModal(index) {
         if (index < 0 || index >= currentHistoryList.length) return;
         currentModalIndex = index;
@@ -2041,15 +1928,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = item.params || {};
 
         modalParams.model.textContent = params.model ? params.model.split(/[\\/]/).pop() : '未知';
-        
-        // [v1.4 VAE 顯示] 新增邏輯來顯示 VAE 資訊
-        if (modalParams.vae) {
-            if (params.vae && params.vae !== 'builtin') {
-                modalParams.vae.textContent = params.vae.split(/[\\/]/).pop();
-            } else {
-                modalParams.vae.textContent = '模型內建';
-            }
-        }
         
         modalParams.lora_list.innerHTML = '';
         if (params.loras && params.loras.length > 0) {
@@ -2117,7 +1995,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (imageModal) imageModal.style.display = 'block';
     }
-// 函式功能：根據索引顯示歷史紀錄項目於 Modal 燈箱中，並填充所有詳細參數
 
     function toggleSelectionMode(enable) {
         isSelectionMode = enable;
@@ -2509,7 +2386,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-// 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
     async function initialize() {
         console.log('應用程式已初始化 v18.1');
         
@@ -2549,7 +2425,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // --- 初始化 Bootstrap Modals ---
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
-        if (vaeSelectionModal) bsVaeSelectionModal = new bootstrap.Modal(vaeSelectionModal); // [新增]
         if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
         if (inpaintCanvasModalEl) bsInpaintCanvasModal = new bootstrap.Modal(inpaintCanvasModalEl);
         if (dependencyDownloadModalEl) bsDependencyDownloadModal = new bootstrap.Modal(dependencyDownloadModalEl);
@@ -2786,14 +2661,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 await fetchAndPopulateCheckpoints();
             });
         }
-        
-        // [新增] VAE Modal 顯示時觸發列表載入
-        if (vaeSelectionModal) {
-            vaeSelectionModal.addEventListener('show.bs.modal', async () => {
-                if (vaeSelectionGrid) vaeSelectionGrid.innerHTML = '<p class="text-muted">正在載入 VAE 列表...</p>';
-                await fetchAndPopulateVAEs();
-            });
-        }
 
         if (loraSelectionModal) {
             loraSelectionModal.addEventListener('show.bs.modal', async () => {
@@ -2914,13 +2781,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-                // [新增] 為 "填入極精細" 按鈕綁定事件
-        if (fixedPromptSetDetailedBtn && comfyFormElements.fixed_prompt) {
-            fixedPromptSetDetailedBtn.addEventListener('click', () => {
-                comfyFormElements.fixed_prompt.value = DEFAULT_FIXED_PROMPT_DETAILED;
-            });
-        }
-
         if (downloadModelForm) {
             downloadModelForm.addEventListener('submit', handleDownloadSubmit);
         }
@@ -2997,49 +2857,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (inpaintSaveMaskBtn) {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
-
-                // [v18.3 新增] 互動提示詞區域按鈕的事件監聽器
-        const regionButtons = document.querySelectorAll('.region-btn');
-        const interactionTextarea = comfyFormElements.interaction_prompt;
-        if (regionButtons && interactionTextarea) {
-            // 注意：這裡的中文必須與 HTML 中的按鈕文字匹配，
-            // 但後端解析的是 data-region 的英文值，所以這裡只是為了插入文本
-            const regionTranslations = {
-                'left': '左半邊', 'right': '右半邊', 'top': '上半邊', 'bottom': '下半邊',
-                'center': '中央', 'top-left': '左上角', 'top-right': '右上角',
-                'bottom-left': '左下角', 'bottom-right': '右下角'
-            };
-
-            regionButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const region = button.dataset.region;
-                    // 我們直接使用英文關鍵字，因為後端是按英文解析的
-                    const textToInsert = `AREA(${region}): `;
-                    
-                    // 在當前光標位置插入文本
-                    const start = interactionTextarea.selectionStart;
-                    const end = interactionTextarea.selectionEnd;
-                    const text = interactionTextarea.value;
-                    const before = text.substring(0, start);
-                    const after = text.substring(end, text.length);
-                    
-                    // 如果目前行為空，或前一行是換行，則直接插入；否則，先換行再插入
-                    const needsNewline = before.length > 0 && !before.endsWith('\n') && before.trim() !== '';
-                    interactionTextarea.value = before + (needsNewline ? '\n' : '') + textToInsert + after;
-                    
-                    // 將光標移動到插入文本的末尾
-                    const newCursorPos = start + (needsNewline ? 1 : 0) + textToInsert.length;
-                    interactionTextarea.selectionStart = newCursorPos;
-                    interactionTextarea.selectionEnd = newCursorPos;
-                    interactionTextarea.focus();
-                });
-            });
-        }
     }
-// 函式功能：初始化應用程式，綁定所有事件監聽器並載入初始資料
-
-
-
+    
     initialize();
 });
 
