@@ -214,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const negativePromptSetDefaultBtn = getById('negative-prompt-set-default-btn');
     const negativePromptSetGuroBtn = getById('negative-prompt-set-guro-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
+    const fixedPromptSetDetailedBtn = getById('fixed-prompt-set-detailed-btn'); // [v1.1 新增]
 
     // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
@@ -287,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_FIXED_PROMPT = "非常美麗的眼睛，完美傑作，8K，UHD，大光圈，最高畫質";
+    const DETAILED_FIXED_PROMPT = "非常美麗的眼睛，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
 // --- 預設提示詞常數 ---
 
 // 中文註釋：fetchWithUserContext函式開始
@@ -420,6 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isLocal) {
             console.log("偵測到本地訪問，強制設為一般使用者模式。");
             userContext.user_type = 'local';
+            activeDeviceUrl = window.location.origin; // [v2.2 核心修正] 確保本地模式下 URL 被正確初始化
             localStorage.removeItem('user_type');
             localStorage.removeItem('gm_last_device');
             try {
@@ -432,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateDeviceSelectorUI(localDeviceId);
             await reloadDataForActiveDevice();
 
-        } else {
+        } else { // 遠端訪問 (GitHub Pages)
             userContext.user_type = localStorage.getItem('user_type') || 'local';
             if (userContext.user_type === 'gm') {
                 const lastDevice = localStorage.getItem('gm_last_device');
@@ -446,12 +449,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (targetDevice) {
-                    await switchDevice(targetDevice);
+                    await switchDevice(targetDevice); // switchDevice 內部會設定好 activeDeviceUrl
                 } else {
                     updateDeviceSelectorUI(null);
                     alert('目前沒有任何遠端裝置在線。');
                 }
-            } else {
+            } else { // 非 GM 的遠端訪問者
                  if(userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
                  if(deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
                  if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
@@ -2938,6 +2941,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (negativePromptSetGuroBtn && comfyFormElements.negative_prompt) {
             negativePromptSetGuroBtn.addEventListener('click', () => {
                 comfyFormElements.negative_prompt.value = DEFAULT_NEGATIVE_PROMPT_GURO;
+            });
+        }
+
+        // [v1.1 新增] 為"精細提示詞"按鈕綁定事件
+        if (fixedPromptSetDetailedBtn && comfyFormElements.fixed_prompt) {
+            fixedPromptSetDetailedBtn.addEventListener('click', () => {
+                comfyFormElements.fixed_prompt.value = DETAILED_FIXED_PROMPT;
             });
         }
 
