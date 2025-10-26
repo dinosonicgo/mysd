@@ -296,6 +296,13 @@
                                         </button>
                                     </div>
                                     <div class="mb-3">
+                                        <label for="comfy-vae-select" class="form-label"><strong>VAE (變分自動編碼器)</strong></label>
+                                        <select class="form-select" id="comfy-vae-select">
+                                            <!-- VAE 選項將由 JavaScript 動態填充 -->
+                                        </select>
+                                        <small class="form-text text-muted">影響圖像色彩和飽和度。建議 SDXL 模型搭配專用 VAE。</small>
+                                    </div>
+                                    <div class="mb-3">
                                         <label class="form-label d-flex justify-content-between">
                                             <strong>LoRA</strong>
                                             <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#lora-selection-modal">
@@ -804,6 +811,10 @@
                         <p class="param-value" id="modal-model"></p>
                     </div>
                     <div class="param-group">
+                        <div class="param-label">VAE</div>
+                        <p class="param-value" id="modal-vae"></p>
+                    </div>
+                    <div class="param-group">
                         <div class="param-label">LoRA(s)</div>
                         <div id="modal-lora-list"></div>
                     </div>
@@ -1079,6 +1090,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1761412915"></script>
+    <script src="js/app.js?v=1761442922"></script>
 </body>
 </html>

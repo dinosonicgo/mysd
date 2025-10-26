@@ -64,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
         translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
         adetailer_steps: getById('comfy-adetailer-steps'),
         denoise: getById('comfy-denoise'),
+        vae: getById('comfy-vae-select'),
     };
 // --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfySelectedModelName = getById('comfy-selected-model-name');
@@ -157,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalDownloadBtn = getById('modal-download-btn');
     const modalParams = {
         model: getById('modal-model'),
+        vae: getById('modal-vae'),
         lora_list: getById('modal-lora-list'),
         img2img_info: getById('modal-img2img-info'),
         source_image: getById('modal-source-image'),
@@ -373,6 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndPopulateControlNetResources(),
             fetchAndPopulateVideoModels(),
             fetchAndPopulateSamplers(),
+            fetchAndPopulateVAEs(),
             fetchDependencyStatus(),
             checkChatServiceStatus() // 檢查聊天服務狀態
         ]);
@@ -773,7 +776,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
                 fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
                 augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            }
+            },
+            vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded'
         };
 
         try {
@@ -874,6 +878,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     videoAugmentationLevelSlider.value = aug_level;
                     videoAugmentationLevelSlider.dispatchEvent(new Event('input'));
                 }
+            }
+
+            if (settings.vae && comfyFormElements.vae) {
+                // 確保選項已經填充
+                setTimeout(() => {
+                    if (Array.from(comfyFormElements.vae.options).some(opt => opt.value === settings.vae)) {
+                        comfyFormElements.vae.value = settings.vae;
+                    }
+                }, 100); // 短暫延遲以等待異步填充完成
             }
 
         } catch (error) {
@@ -1045,6 +1058,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
+
+    async function fetchAndPopulateVAEs() {
+        const vaeSelect = comfyFormElements.vae;
+        if (!vaeSelect) return;
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/vaes');
+            if (!response.ok) throw new Error('無法獲取 VAE 列表');
+            const vaes = await response.json();
+            
+            const currentValue = vaeSelect.value;
+            vaeSelect.innerHTML = ''; // 清空現有選項
+
+            // 添加預設選項
+            const defaultOption = document.createElement('option');
+            defaultOption.value = 'model_embedded';
+            defaultOption.textContent = '使用模型內建 VAE (預設)';
+            vaeSelect.appendChild(defaultOption);
+
+            // 填充從 API 獲取的 VAE
+            vaes.forEach(vaeName => {
+                const option = document.createElement('option');
+                option.value = vaeName;
+                option.textContent = vaeName;
+                vaeSelect.appendChild(option);
+            });
+
+            // 恢復之前選擇的值
+            if (currentValue && vaes.includes(currentValue)) {
+                vaeSelect.value = currentValue;
+            } else {
+                vaeSelect.value = 'model_embedded';
+            }
+
+        } catch (error) {
+            console.error('填充 VAE 列表時出錯:', error);
+            vaeSelect.innerHTML = `<option value="model_embedded">錯誤: ${error.message}</option>`;
+        }
+    }
 
     async function fetchAndPopulateVideoModels() {
         try {
@@ -1798,7 +1850,8 @@ document.addEventListener('DOMContentLoaded', () => {
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
             is_video: isVideoMode,
-            video_params: null
+            video_params: null,
+            vae: comfyFormElements.vae.value
         };
     
         if (isVideoMode) {
@@ -2035,6 +2088,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = item.params || {};
 
         modalParams.model.textContent = params.model ? params.model.split(/[\\/]/).pop() : '未知';
+
+        if (params.vae && params.vae !== "model_embedded") {
+            modalParams.vae.textContent = params.vae;
+        } else {
+            modalParams.vae.textContent = '模型內建';
+        }
         
         modalParams.lora_list.innerHTML = '';
         if (params.loras && params.loras.length > 0) {
