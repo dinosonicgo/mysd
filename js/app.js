@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_FIXED_PROMPT = "非常美麗的眼睛，完美傑作，8K，UHD，大光圈，最高畫質";
-    const DETAILED_FIXED_PROMPT = "非常美麗的眼睛，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
+    const DETAILED_FIXED_PROMPT = "非常美麗的眼睛，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，景深，散景";
 // --- 預設提示詞常數 ---
 
 // 中文註釋：fetchWithUserContext函式開始
