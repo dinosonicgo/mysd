@@ -6,7 +6,7 @@
  * v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
     // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
@@ -971,8 +971,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
                 if (modelNameLower.includes('qwen')) {
-                    model.architecture = 'qwen_gguf';
-                    model.isQwen = true; // 標記為 Qwen 模型
+                    model.architecture = 'qwen';
+                    model.isQwen = true;
+                    // 修正 Qwen 模型路徑，從 diffusion_models 載入
+                    model.name = 'diffusion_models/' + model.name.split('/').pop();
                 } else if (modelNameLower.includes('flux')) {
                     model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
                 } else if (modelNameLower.includes('sd3')) {
@@ -1195,27 +1197,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
             
-            // 呼叫後端載入 Qwen 工作流
-            try {
-                const positive = comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '';
-                const negative = comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '';
-                
-                const response = await fetchWithUserContext('/api/comfyui/workflow/load-qwen', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ positive, negative })
-                });
-                const data = await response.json();
-                if (data.status === 'qwen_loaded') {
-                    console.log('Qwen 工作流自動載入，prompt_id:', data.prompt_id);
-                    if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式啟動完成';
-                } else {
-                    throw new Error(data.error || '未知錯誤');
+            // 使用 Qwen 優化參數
+            if (comfyFormElements.positive_prompt) {
+                const currentPrompt = comfyFormElements.positive_prompt.value;
+                if (!currentPrompt.includes('(Qwen 模式)')) {
+                    comfyFormElements.positive_prompt.value = `${currentPrompt} (Qwen 模式: 寫實, 高解析)`;
                 }
-            } catch (error) {
-                console.error('Qwen 工作流載入失敗:', error);
-                alert('Qwen 模式切換失敗: ' + error.message);
             }
+            
+            // 清理 LoRA 列表，因為 Qwen 不支援 LoRA
+            comfyFormElements.loras = [];
+            renderSelectedLoras();
+            
+            console.log('Qwen 模式已啟用，參數已最佳化');
+            if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
         }
         
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
@@ -1741,6 +1736,7 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
+// 中文註釋：handleGenerateClick函式開始
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
@@ -1749,11 +1745,17 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('請先選擇一個 Checkpoint 模型！');
             return;
         }
-        if (isVideoMode && (!videoModelSelect || !videoModelSelect.value)) {
-            alert('請先選擇一個影片模型！');
-            return;
-        }
     
+        // Qwen 模型參數的特殊處理
+        const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
+        if (isQwenModel) {
+            // 在點擊生成時，再次確保 Qwen 的專用參數被設置
+            console.log("Qwen 模型偵測到，正在強制設定最佳化參數...");
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            // 注意：VAE 的選擇應在 selectModel 時處理，此處不再強制覆蓋，以尊重用戶可能的手動修改
+        }
+
         comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
@@ -1766,12 +1768,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
         await saveSettings();
     
+        // 建立 payload，已移除所有影片相關欄位
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
-            main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
-            video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
+            main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
@@ -1786,8 +1788,8 @@ document.addEventListener('DOMContentLoaded', () => {
             denoise: comfyFormElements.denoise ? parseFloat(comfyFormElements.denoise.value) : 1.0,
             source_image: img2imgState.source_image,
             inpaint_mask: img2imgState.inpaint_mask,
-            optimize_positive: isVideoMode ? (videoOptimizePositiveCheckbox ? videoOptimizePositiveCheckbox.checked : false) : (comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false),
-            ai_optimize: isVideoMode ? (videoAiOptimizeCheckbox ? videoAiOptimizeCheckbox.checked : false) : (comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false),
+            optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
+            ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
@@ -1799,25 +1801,8 @@ document.addEventListener('DOMContentLoaded', () => {
             controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
-            is_video: isVideoMode,
-            video_params: null,
             vae: comfyFormElements.vae.value
         };
-    
-        if (isVideoMode) {
-            payload.video_params = {
-                svd_model: videoModelSelect ? videoModelSelect.value : '',
-                video_frames: videoFramesInput ? parseInt(videoFramesInput.value, 10) : 25,
-                motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
-                fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
-                augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            };
-            if (videoGenerationModeSelect && videoGenerationModeSelect.value === 'image-to-video') {
-                payload.source_image = videoState.source_image;
-            } else {
-                payload.source_image = null;
-            }
-        }
         
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
@@ -1863,6 +1848,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+// 中文註釋：handleGenerateClick函式結束
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
@@ -2956,8 +2942,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 // 中文註釋：initialize函式結束
     
-    initialize();
+    try {
+        await initialize();
+        console.log('初始化完成');
+    } catch (error) {
+        console.error('初始化過程中發生錯誤:', error);
+    }
 });
+
+function isQwenModel(modelName) {
+    return modelName.toLowerCase().includes('qwen') || modelName.toLowerCase().includes('diffusion_models/qwen');
+}
 
 function filterModels() {
     const modelSelectionGrid = document.getElementById('model-selection-grid');
