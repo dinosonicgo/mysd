@@ -122,24 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const controlnetStrengthSlider = getById('comfy-controlnet-strength');
     const controlnetStrengthValueLabel = getById('controlnet-strength-value-label');
     
-    // --- 元素選擇器 (ComfyUI - 影片生成) ---
-    const videoMainPrompt = getById('video-main-prompt');
-    const videoOptimizePositiveCheckbox = getById('video-optimize-positive-checkbox');
-    const videoAiOptimizeCheckbox = getById('video-ai-optimize-checkbox');
-    const videoModelSelect = getById('video-model-select');
-    const videoGenerationModeSelect = getById('video-generation-mode');
-    const videoUploadContainer = getById('video-upload-container');
-    const videoFileInput = getById('video-file-input');
-    const videoUploadArea = getById('video-upload-area');
-    const videoPreviewContainer = getById('video-preview-container');
-    const videoPreview = getById('video-preview');
-    const videoFilename = getById('video-filename');
-    const videoClearBtn = getById('video-clear-btn');
-    const videoFramesInput = getById('video-frames');
-    const videoFpsInput = getById('video-fps');
-    const videoMotionBucketInput = getById('video-motion-bucket');
-    const videoAugmentationLevelSlider = getById('video-augmentation-level');
-    const videoAugmentationLevelLabel = getById('video-augmentation-level-label');
+
 
     // --- 進度條元素 ---
     const comfyProgressContainer = getById('comfy-progress-container');
@@ -151,7 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 元素選擇器 (圖片/影片 Modal) ---
     const imageModal = getById('image-modal');
     const modalImage = getById('modal-image');
-    const modalVideo = getById('modal-video');
     const modalCloseBtn = getById('modal-close-btn');
     const modalPrevBtn = getById('modal-prev-btn');
     const modalNextBtn = getById('modal-next-btn');
@@ -746,9 +728,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
-        const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
-        const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
-    
         const settings = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
@@ -764,22 +743,14 @@ document.addEventListener('DOMContentLoaded', () => {
             cfg: comfyFormElements.cfg ? comfyFormElements.cfg.value : 8.0,
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
-            optimize_positive: isVideoTabActive ? (videoOptimizePositiveCheckbox ? videoOptimizePositiveCheckbox.checked : false) : (comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false),
-            ai_optimize: isVideoTabActive ? (videoAiOptimizeCheckbox ? videoAiOptimizeCheckbox.checked : false) : (comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false),
+            optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
+            ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
             adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
             denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
-            video_main_prompt: videoMainPrompt ? videoMainPrompt.value : '',
-            video_params: {
-                svd_model: videoModelSelect ? videoModelSelect.value : '',
-                video_frames: videoFramesInput ? parseInt(videoFramesInput.value, 10) : 25,
-                motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
-                fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
-                augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            },
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded'
         };
 
@@ -849,14 +820,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     comfyFormElements.optimize_positive.checked = settings.optimize_positive;
                     comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
                 }
-                if (videoOptimizePositiveCheckbox) {
-                    videoOptimizePositiveCheckbox.checked = settings.optimize_positive;
-                    videoOptimizePositiveCheckbox.dispatchEvent(new Event('change'));
-                }
             }
-            if (typeof settings.ai_optimize === 'boolean') {
-                if (comfyFormElements.ai_optimize) comfyFormElements.ai_optimize.checked = settings.ai_optimize;
-                if (videoAiOptimizeCheckbox) videoAiOptimizeCheckbox.checked = settings.ai_optimize;
+            if (typeof settings.ai_optimize === 'boolean' && comfyFormElements.ai_optimize) {
+                comfyFormElements.ai_optimize.checked = settings.ai_optimize;
             }
 
             if (typeof settings.translate_negative === 'boolean' && comfyFormElements.translate_negative) {
@@ -870,19 +836,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 comfyFormElements.translate_adetailer_positive.checked = settings.translate_adetailer_positive;
             }
             
-            if (videoMainPrompt) videoMainPrompt.value = settings.video_main_prompt || '';
-            if (settings.video_params) {
-                if(videoModelSelect) videoModelSelect.value = settings.video_params.svd_model || '';
-                if(videoFramesInput) videoFramesInput.value = settings.video_params.video_frames || 25;
-                if(videoMotionBucketInput) videoMotionBucketInput.value = settings.video_params.motion_bucket_id || 127;
-                if(videoFpsInput) videoFpsInput.value = settings.video_params.fps || 6;
-                if(videoAugmentationLevelSlider) {
-                    const aug_level = settings.video_params.augmentation_level || 0.0;
-                    videoAugmentationLevelSlider.value = aug_level;
-                    videoAugmentationLevelSlider.dispatchEvent(new Event('input'));
-                }
-            }
-
             if (settings.vae && comfyFormElements.vae) {
                 // 確保選項已經填充
                 setTimeout(() => {
@@ -2062,10 +2015,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        modalImage.style.display = 'none';
-        modalVideo.style.display = 'none';
-        modalVideo.pause();
-        modalVideo.currentTime = 0;
         Object.values(modalParams).forEach(el => {
             if (el && el.style && (el.id.includes('-info') || el.id.includes('-container'))) {
                 el.style.display = 'none';
@@ -2073,15 +2022,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         const fullItemUrl = new URL(item.url, activeDeviceUrl).href;
-
-        if (item.is_video) {
-            modalVideo.src = fullItemUrl;
-            modalVideo.style.display = 'block';
-            modalVideo.play();
-        } else {
-            modalImage.src = fullItemUrl;
-            modalImage.style.display = 'block';
-        }
+        modalImage.src = fullItemUrl;
+        modalImage.style.display = 'block';
 
         if (modalDownloadBtn) {
             modalDownloadBtn.href = fullItemUrl;

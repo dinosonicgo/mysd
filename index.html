@@ -274,11 +274,7 @@
                                         <i class="bi bi-joystick"></i> ControlNet
                                     </button>
                                 </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="video-tab" data-bs-toggle="tab" data-bs-target="#tab-pane-video" type="button" role="tab" aria-controls="tab-pane-video" aria-selected="false">
-                                        <i class="bi bi-film"></i> 影片生成
-                                    </button>
-                                </li>
+
                             </ul>
                             
                             <div class="tab-content pt-3" id="control-panel-tab-content">
@@ -502,78 +498,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <!-- 影片生成頁籤 -->
-                                <div class="tab-pane fade" id="tab-pane-video" role="tabpanel" aria-labelledby="video-tab" tabindex="0">
-                                    <div class="mb-3">
-                                        <label for="video-main-prompt" class="form-label"><strong>影片提示詞 (核心創意)</strong></label>
-                                        <textarea class="form-control" id="video-main-prompt" rows="4" placeholder="請輸入影片的核心創意..."></textarea>
-                                        <div class="mt-2">
-                                            <fieldset id="video-prompt-optimization-fieldset">
-                                                <div class="form-check form-switch form-check-inline">
-                                                    <input type="checkbox" class="form-check-input" id="video-optimize-positive-checkbox" role="switch">
-                                                    <label class="form-check-label" for="video-optimize-positive-checkbox">提示詞強化</label>
-                                                </div>
-                                                <div class="form-check form-switch form-check-inline">
-                                                    <input type="checkbox" class="form-check-input" id="video-ai-optimize-checkbox" role="switch">
-                                                    <label class="form-check-label" for="video-ai-optimize-checkbox">AI 優化提示詞</label>
-                                                </div>
-                                            </fieldset>
-                                        </div>
-                                    </div>
-                                    <hr>
-                                    <div class="mb-3">
-                                        <label for="video-model-select" class="form-label"><strong>影片模型</strong></label>
-                                        <select class="form-select" id="video-model-select"></select>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="video-generation-mode" class="form-label"><strong>生成模式</strong></label>
-                                        <select class="form-select" id="video-generation-mode">
-                                            <option value="text-to-video">文生影 (Text-to-Video)</option>
-                                            <option value="image-to-video">圖生影 (Image-to-Video)</option>
-                                        </select>
-                                        <small class="form-text text-muted">文生影將使用 SDXL 模型自動生成初始幀。</small>
-                                    </div>
-                                    <div id="video-upload-container" style="display: none;">
-                                        <hr>
-                                        <label class="form-label"><strong>初始圖片</strong></label>
-                                        <input type="file" id="video-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
-                                        <div id="video-upload-area" class="upload-area">
-                                            <i class="bi bi-cloud-arrow-up-fill fs-1 text-secondary"></i>
-                                            <p class="mt-2 mb-0">點擊上傳初始圖片</p>
-                                        </div>
-                                        <div id="video-preview-container" class="preview-container mt-3">
-                                            <img id="video-preview" src="#" alt="Video Init Image Preview" class="preview-image">
-                                            <div class="d-flex justify-content-between align-items-center mt-2">
-                                                <span id="video-filename" class="text-muted small text-truncate"></span>
-                                                <button class="btn btn-sm btn-outline-danger" id="video-clear-btn">
-                                                    <i class="bi bi-trash3-fill"></i> 清除
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <hr>
-                                    <h5><i class="bi bi-gear-wide-connected"></i> 影片參數</h5>
-                                    <div class="row g-2 mb-3">
-                                        <div class="col-md-6">
-                                            <label for="video-frames" class="form-label">影片幀數</label>
-                                            <input type="number" class="form-control" id="video-frames" value="25" min="1">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label for="video-fps" class="form-label">每秒幀數 (FPS)</label>
-                                            <input type="number" class="form-control" id="video-fps" value="6" min="1">
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="video-motion-bucket" class="form-label">運動幅度 (Motion Bucket ID)</label>
-                                        <input type="number" class="form-control" id="video-motion-bucket" value="127" min="0">
-                                        <small class="form-text text-muted">數值越高，運動越劇烈。</small>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="video-augmentation-level" class="form-label">增強級別: <span id="video-augmentation-level-label">0.00</span></label>
-                                        <input type="range" class="form-range" id="video-augmentation-level" min="0" max="1" step="0.01" value="0">
-                                        <small class="form-text text-muted">為初始圖片添加的噪聲量。</small>
-                                    </div>
-                                </div>
+
                             </div>
 
                             <hr>
@@ -611,7 +536,7 @@
                             </div>
                             <div id="comfy-result-container">
                                 <img id="comfy-result-image" src="https://via.placeholder.com/512x512.png?text=等待生成" alt="ComfyUI 生成的圖片">
-                                <video id="comfy-result-video" controls loop style="display: none;"></video>
+
                             </div>
                         </div>
                     </div>
@@ -806,7 +731,6 @@
                 <a class="modal-nav next" id="modal-next-btn">❯</a>
                 <div class="image-modal-media-container" id="modal-media-container">
                     <img class="image-modal-image" id="modal-image">
-                    <video class="image-modal-video" id="modal-video" controls loop></video>
                     <a id="modal-download-btn" class="modal-download-btn" href="#" download title="下載此檔案"><i class="bi bi-download"></i></a>
                 </div>
                 <div class="image-modal-details">
@@ -838,12 +762,7 @@
                         <p class="param-value mb-1">預處理器: <span id="modal-controlnet-preprocessor"></span></p>
                         <p class="param-value mb-0">強度: <span id="modal-controlnet-strength"></span></p>
                     </div>
-                    <div class="param-group" id="modal-video-info" style="display: none;">
-                        <div class="param-label">影片參數</div>
-                        <p class="param-value mb-1">SVD 模型: <span id="modal-svd-model"></span></p>
-                        <p class="param-value mb-1">幀數: <span id="modal-video-frames"></span> | FPS: <span id="modal-video-fps"></span></p>
-                        <p class="param-value mb-0">運動幅度: <span id="modal-motion-bucket"></span> | 增強級別: <span id="modal-augmentation-level"></span></p>
-                    </div>
+
                     <div class="param-group">
                         <div class="param-label">優化模式</div>
                         <p class="param-value" id="modal-optimization-mode">無</p>
@@ -1095,6 +1014,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1761647503"></script>
+    <script src="js/app.js?v=1761652807"></script>
 </body>
 </html>
