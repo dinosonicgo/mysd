@@ -757,6 +757,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 // 函式功能：將當前介面上的所有參數設定儲存到後端
 
+// 中文註釋：loadSettings函式開始
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
     async function loadSettings() {
         try {
@@ -779,7 +780,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
-            if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
+            
+            // [v18.20 修正] 允許固定提示詞為空白
+            // 只有當 settings.fixed_prompt 為 null 或 undefined 時才使用預設值
+            if (comfyFormElements.fixed_prompt) {
+                comfyFormElements.fixed_prompt.value = (settings.fixed_prompt !== null && settings.fixed_prompt !== undefined) ? settings.fixed_prompt : 'masterpiece, best quality,';
+            }
+
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
             
@@ -828,12 +835,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             if (settings.vae && comfyFormElements.vae) {
-                // 確保選項已經填充
                 setTimeout(() => {
                     if (Array.from(comfyFormElements.vae.options).some(opt => opt.value === settings.vae)) {
                         comfyFormElements.vae.value = settings.vae;
                     }
-                }, 100); // 短暫延遲以等待異步填充完成
+                }, 100);
             }
 
         } catch (error) {
@@ -843,6 +849,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+// 中文註釋：loadSettings函式結束
     
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
@@ -1178,44 +1185,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         return card;
     }
 
+// 中文註釋：selectModel函式開始
+// 函式功能：處理模型選擇事件，更新應用程式狀態並觸發相關 UI 更新
     async function selectModel(item) {
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
+
+        // [v18.19 移除] 移除所有對 Qwen 模型的特殊參數設定，給予使用者完全控制權
+        /*
+        const isQwenModel = newModel.toLowerCase().includes('qwen');
+        if (isQwenModel) {
+            console.log('Qwen 模式已啟用，參數已最佳化');
+            if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
+        }
+        */
+
         if (comfyFormElements.model !== newModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
         }
+
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
-        // Qwen 模型特殊處理
-        const isQwenModel = newModel.toLowerCase().includes('qwen');
-        if (isQwenModel) {
-            // 設置 Qwen 專用參數
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
-            if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
-            
-            // 使用 Qwen 優化參數
-            if (comfyFormElements.positive_prompt) {
-                const currentPrompt = comfyFormElements.positive_prompt.value;
-                if (!currentPrompt.includes('(Qwen 模式)')) {
-                    comfyFormElements.positive_prompt.value = `${currentPrompt} (Qwen 模式: 寫實, 高解析)`;
-                }
-            }
-            
-            // 清理 LoRA 列表，因為 Qwen 不支援 LoRA
-            comfyFormElements.loras = [];
-            renderSelectedLoras();
-            
-            console.log('Qwen 模式已啟用，參數已最佳化');
-            if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
-        }
-        
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
+// 函式功能：處理模型選擇事件，更新應用程式狀態並觸發相關 UI 更新
+// 中文註釋：selectModel函式結束
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
@@ -1745,17 +1743,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             alert('請先選擇一個 Checkpoint 模型！');
             return;
         }
-    
-        // Qwen 模型參數的特殊處理
+
+        /*
+        // [v18.18 移除] 根據使用者要求，移除對 Qwen 模型參數的強制覆蓋。
+        // 現在，使用者在前端設定的 Steps 和 CFG 值將被直接使用。
         const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
         if (isQwenModel) {
-            // 在點擊生成時，再次確保 Qwen 的專用參數被設置
             console.log("Qwen 模型偵測到，正在強制設定最佳化參數...");
             if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
             if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
-            // 注意：VAE 的選擇應在 selectModel 時處理，此處不再強制覆蓋，以尊重用戶可能的手動修改
         }
-
+        */
+    
         comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
@@ -1768,7 +1767,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     
         await saveSettings();
     
-        // 建立 payload，已移除所有影片相關欄位
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
@@ -1850,6 +1848,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
 // 中文註釋：handleGenerateClick函式結束
 
+// 中文註釋：connectStatusWebSocket函式開始
+// 函式功能：建立並管理與後端生成狀態的 WebSocket 連線
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
         
@@ -1859,6 +1859,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         comfyStatusWs = new WebSocket(wsUrl);
         let isFirstItem = true;
+        const newBatchIds = [];
 
         comfyStatusWs.onopen = () => console.log(`已連接到狀態 WebSocket，監聽 Prompt ID: ${prompt_id}`);
         comfyStatusWs.onmessage = (event) => {
@@ -1894,6 +1895,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     break;
                 case 'item_generated':
                     const itemData = message.data;
+                    newBatchIds.push(itemData.id);
                     const promptText = itemData.params?.positive_prompt || '';
 
                     if (promptText.includes("LOCAL_FALLBACK_USED:")) {
@@ -1910,14 +1912,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (isFirstItem) {
                         const fullItemUrl = new URL(itemData.url, activeDeviceUrl).href;
+                        // [v18.18 修正] 後端已明確提供 is_video，此處判斷更可靠
                         if (itemData.is_video) {
+                            // 這段邏輯目前用不到，但保留以備將來支援影片
                             if(comfyResultImage) comfyResultImage.style.display = 'none';
+                            const comfyResultVideo = document.getElementById('comfy-result-video'); // 假設有這個元素
                             if(comfyResultVideo) {
                                 comfyResultVideo.src = fullItemUrl;
                                 comfyResultVideo.style.display = 'block';
                                 comfyResultVideo.play();
                             }
                         } else {
+                            const comfyResultVideo = document.getElementById('comfy-result-video'); // 假設有這個元素
                             if(comfyResultVideo) comfyResultVideo.style.display = 'none';
                             if(comfyResultImage) {
                                 comfyResultImage.src = fullItemUrl;
@@ -1928,25 +1934,43 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     break;
                 case 'all_complete': 
+                    // [v18.18 新增] 在生成完成後重置UI並刷新歷史紀錄
+                    resetUI();
+                    localStorage.setItem('last_batch_ids', JSON.stringify(newBatchIds));
+                    // 短暫延遲後再請求新歷史，確保後端已寫入檔案
+                    setTimeout(() => {
+                        fetchHistory('newer');
+                    }, 500); 
                     break;
                 case 'error':
                     if(comfyStatusText) {
                         comfyStatusText.textContent = `錯誤: ${message.data.message}`;
                         comfyStatusText.classList.add('text-danger');
                     }
+                    resetUI();
                     comfyStatusWs.close();
                     break;
             }
         };
-        comfyStatusWs.onclose = (event) => console.log(`狀態 WebSocket (Prompt ID: ${prompt_id}) 已關閉。 Code: ${event.code}`);
+        comfyStatusWs.onclose = (event) => {
+            console.log(`狀態 WebSocket (Prompt ID: ${prompt_id}) 已關閉。 Code: ${event.code}`);
+            // 如果UI還在生成狀態，但連線意外中斷，也重置UI
+            if (comfyGenerateBtn && comfyGenerateBtn.disabled) {
+                console.log("WebSocket 意外關閉，重置UI狀態。");
+                resetUI();
+            }
+        };
         comfyStatusWs.onerror = (error) => {
             console.error(`狀態 WebSocket (Prompt ID: ${prompt_id}) 發生錯誤:`, error);
             if(comfyStatusText) {
                 comfyStatusText.textContent = '進度監聽連線錯誤。';
                 comfyStatusText.classList.add('text-danger');
             }
+            resetUI();
         };
     }
+// 函式功能：建立並管理與後端生成狀態的 WebSocket 連線
+// 中文註釋：connectStatusWebSocket函式結束
 
     async function pollQueueStatus() {
         try {
@@ -2482,7 +2506,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 中文註釋：initialize函式開始
 // 函式功能：應用程式的主初始化函式
     async function initialize() {
-        console.log('應用程式已初始化 v18.1');
+        console.log('應用程式已初始化 v18.17');
         
         clientId = getClientId();
         console.log(`客戶端 ID 已設定為: ${clientId}`);
@@ -2514,7 +2538,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
         
-        // [v2.0 核心修正] 呼叫全新的多裝置啟動流程
         await loadSharedConfigAndInitialize();
         
         setInterval(pollQueueStatus, 3000); 
@@ -2621,8 +2644,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
         }
         
-        // [v23.0 修正] 移除對 videoOptimizePositiveCheckbox 和 videoAiOptimizeCheckbox 的事件監聽，因為它們已被刪除
-        
         if (enableControlnetSwitch) {
             enableControlnetSwitch.addEventListener('change', (e) => {
                 const isEnabled = e.target.checked;
@@ -2638,10 +2659,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
         
-        // [v23.0 修正] 移除對影片生成相關 UI 元素的事件監聽
-        
-        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; }); // [v23.0 修正] 移除對 modalVideo 的操作
-        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none";} }); // [v23.0 修正] 移除對 modalVideo 的操作
+        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; });
+        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none";} });
         if (modalPrevBtn) modalPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex - 1); });
         if (modalNextBtn) modalNextBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex + 1); });
         document.addEventListener('keydown', (e) => {
@@ -2845,7 +2864,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // [v1.1 新增] 為"精細提示詞"按鈕綁定事件
         if (fixedPromptSetDetailedBtn && comfyFormElements.fixed_prompt) {
             fixedPromptSetDetailedBtn.addEventListener('click', () => {
                 comfyFormElements.fixed_prompt.value = DETAILED_FIXED_PROMPT;
@@ -2866,6 +2884,87 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (downloadModelForm) {
             downloadModelForm.addEventListener('submit', handleDownloadSubmit);
         }
+
+        // [v18.17 新增] Qwen 模型包下載事件監聽
+        const downloadQwenBundleBtn = getById('download-qwen-bundle-btn');
+        const qwenDownloadSpinner = getById('qwen-download-spinner');
+        const qwenDownloadStatus = getById('qwen-download-status');
+
+        if (downloadQwenBundleBtn) {
+            downloadQwenBundleBtn.addEventListener('click', async () => {
+                downloadQwenBundleBtn.disabled = true;
+                if(qwenDownloadSpinner) qwenDownloadSpinner.style.display = 'inline-block';
+                if(qwenDownloadStatus) qwenDownloadStatus.innerHTML = `<div class="alert alert-info small">正在提交下載請求...</div>`;
+
+                try {
+                    const response = await fetchWithUserContext('/api/comfyui/download_qwen_bundle', { method: 'POST' });
+                    const result = await response.json();
+
+                    if (!response.ok || !result.task_id) {
+                        throw new Error(result.detail || '提交下載請求失敗');
+                    }
+                    
+                    const taskId = result.task_id;
+                    const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
+                    const wsHost = new URL(activeDeviceUrl).host;
+                    const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/status/${taskId}`;
+                    const ws = new WebSocket(wsUrl);
+
+                    ws.onopen = () => console.log(`已連接到 Qwen 下載 WebSocket，監聽任務 ID: ${taskId}`);
+                    
+                    ws.onmessage = (event) => {
+                        const message = JSON.parse(event.data);
+                        const data = message.data;
+                        
+                        if (!qwenDownloadStatus) return;
+
+                        switch (message.type) {
+                            case 'progress':
+                                if (data.progress !== undefined) {
+                                    const percent = data.progress;
+                                    const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
+                                    const totalMB = (data.total / 1024 / 1024).toFixed(2);
+                                    qwenDownloadStatus.innerHTML = `
+                                        <p class="small mb-1">${data.message}</p>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" role="progressbar" style="width: ${percent}%;">${percent}%</div>
+                                        </div>
+                                        <div class="text-center small mt-1">${downloadedMB} MB / ${totalMB} MB</div>
+                                    `;
+                                } else if (data.message) {
+                                    qwenDownloadStatus.innerHTML = `<div class="alert alert-info small">${data.message}</div>`;
+                                }
+                                break;
+                            case 'complete':
+                                qwenDownloadStatus.innerHTML = `<div class="alert alert-success small">${data.message}</div>`;
+                                downloadQwenBundleBtn.disabled = false;
+                                if(qwenDownloadSpinner) qwenDownloadSpinner.style.display = 'none';
+                                ws.close();
+                                break;
+                            case 'error':
+                                qwenDownloadStatus.innerHTML = `<div class="alert alert-danger small">錯誤: ${data.message}</div>`;
+                                downloadQwenBundleBtn.disabled = false;
+                                if(qwenDownloadSpinner) qwenDownloadSpinner.style.display = 'none';
+                                ws.close();
+                                break;
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        console.error('Qwen 下載 WebSocket 錯誤:', error);
+                        if(qwenDownloadStatus) qwenDownloadStatus.innerHTML = `<div class="alert alert-danger small">無法連接到下載進度伺服器。</div>`;
+                        downloadQwenBundleBtn.disabled = false;
+                        if(qwenDownloadSpinner) qwenDownloadSpinner.style.display = 'none';
+                    };
+
+                } catch (error) {
+                    if(qwenDownloadStatus) qwenDownloadStatus.innerHTML = `<div class="alert alert-danger small">錯誤: ${error.message}</div>`;
+                    downloadQwenBundleBtn.disabled = false;
+                    if(qwenDownloadSpinner) qwenDownloadSpinner.style.display = 'none';
+                }
+            });
+        }
+
 
         modelFilterCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', filterModels);
@@ -2940,6 +3039,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
     }
+// 函式功能：應用程式的主初始化函式
 // 中文註釋：initialize函式結束
     
     try {
