@@ -968,11 +968,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
-                // [v1.4 Qwen UI 修正] 簡化架構判斷邏輯
+                // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
                 if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
+                    model.isQwen = true;
                 } else if (modelNameLower.includes('flux')) {
                     model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
                 } else if (modelNameLower.includes('sd3')) {
@@ -1178,76 +1179,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 // 中文註釋：selectModel函式開始
-// 函式功能：處理使用者選擇新模型的事件，並根據模型類型動態調整 UI
+// 函式功能：處理使用者在模型選擇介面中點擊選擇一個模型的操作
     async function selectModel(item) {
+        /**
+         * v1.0 (Qwen AIO 支援): 新增了對 Qwen-Rapid-AIO-NSFW 模型的特別處理邏輯。
+         *      - 當偵測到此模型被選中時，會自動將前端介面的參數（步數、CFG、採樣器、排程器）
+         *        設定為此模型推薦的最佳化值（例如 4 steps, 1.0 CFG, lcm sampler）。
+         *      - 同時，會自動為使用者預先選擇並載入推薦的 'qwen_anime_nsfw_lora.safetensors'，
+         *        簡化了操作流程並確保最佳出圖效果。
+         */
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
 
-        // --- [v1.5 新增] 擴展 Qwen 模型 UI 自動配置邏輯 ---
-        const isQwenModel = newArchitecture === 'qwen';
-        
-        // 無論模型類型如何，首先恢復所有可能被禁用的控制項
-        [
-            comfyFormElements.sampler_name, 
-            comfyFormElements.scheduler,
-            comfyFormElements.steps, 
-            comfyFormElements.cfg
-        ].forEach(el => {
-            if (el) el.disabled = false;
-        });
-
-        // 清除可能存在的狀態提示
-        if (comfyStatusText) {
-            if (!comfyStatusText.classList.contains('text-danger')) {
-                 comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
-            }
-        }
-
-        if (isQwenModel) {
-            // 如果是 Qwen 模型，則強制設定並禁用所有相關參數
-            console.log('Qwen AIO 模型已選擇，正在自動配置並鎖定 UI 為 LCM 模式...');
-            
-            if (comfyFormElements.sampler_name) {
-                comfyFormElements.sampler_name.value = 'lcm';
-                comfyFormElements.sampler_name.disabled = true;
-            }
-            if (comfyFormElements.scheduler) { // 新增對調度器的處理
-                comfyFormElements.scheduler.value = 'normal';
-                comfyFormElements.scheduler.disabled = true;
-            }
-            if (comfyFormElements.steps) {
-                comfyFormElements.steps.value = 4;
-                comfyFormElements.steps.disabled = true;
-            }
-            if (comfyFormElements.cfg) {
-                comfyFormElements.cfg.value = 1.0;
-                comfyFormElements.cfg.disabled = true;
-            }
-            
-            // 清理 LoRA 列表，因為 Qwen 的 LoRA 是特定的，避免混用
-            if (comfyFormElements.model !== newModel) {
-                comfyFormElements.loras = [];
-                renderSelectedLoras();
-            }
-
-            if (comfyStatusText) {
-                comfyStatusText.innerHTML = '<i class="bi bi-info-circle-fill text-primary"></i> <strong>Qwen LCM 模式已啟用：</strong> 相關參數已為此模型鎖定。';
-            }
-        }
-        
-        // 更新模型選擇
-        if (comfyFormElements.model !== newModel && !isQwenModel) {
+        // 如果模型改變，則清空已選的 LoRA
+        if (comfyFormElements.model !== newModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
         }
+
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
+        const newModelLower = newModel.toLowerCase();
+        const isQwenAIONSFW = newModelLower.includes('qwen-rapid-aio-nsfw');
+        const isGenericQwen = newModelLower.includes('qwen') && !isQwenAIONSFW;
+
+        if (isQwenAIONSFW) {
+            console.log('Qwen AIO NSFW 模式已啟用，正在自動設定推薦參數...');
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 4;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'lcm';
+            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'normal';
+            
+            // 自動為使用者選擇並添加推薦的 LoRA
+            comfyFormElements.loras = [{ name: 'qwen_anime_nsfw_lora.safetensors', weight: 0.85 }];
+            renderSelectedLoras();
+            
+            if (comfyStatusText) {
+                comfyStatusText.textContent = 'Qwen AIO NSFW 模式已啟用，參數已自動設為推薦值。';
+                comfyStatusText.classList.remove('text-danger');
+                comfyStatusText.classList.add('text-success');
+            }
+
+        } else if (isGenericQwen) {
+            console.log('通用 Qwen 模式已啟用，參數已最佳化...');
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
+            
+            // 通用 Qwen (GGUF) 不支援 LoRA，清空列表
+            comfyFormElements.loras = [];
+            renderSelectedLoras();
+            
+            if (comfyStatusText) {
+                comfyStatusText.textContent = '通用 Qwen (GGUF) 模式已啟用。';
+                comfyStatusText.classList.remove('text-danger');
+                comfyStatusText.classList.add('text-success');
+            }
+        }
+        
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
-// 函式功能：處理使用者選擇新模型的事件，並根據模型類型動態調整 UI
+// 函式功能：處理使用者在模型選擇介面中點擊選擇一個模型的操作
 // 中文註釋：selectModel函式結束
 
     function renderSelectedLoras() {
