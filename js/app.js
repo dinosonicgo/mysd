@@ -968,12 +968,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
-                // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
+                // [v1.4 Qwen UI 修正] 簡化架構判斷邏輯
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
                 if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
-                    model.isQwen = true;
                 } else if (modelNameLower.includes('flux')) {
                     model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
                 } else if (modelNameLower.includes('sd3')) {
@@ -1178,10 +1177,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         return card;
     }
 
+// 中文註釋：selectModel函式開始
+// 函式功能：處理使用者選擇新模型的事件，並根據模型類型動態調整 UI
     async function selectModel(item) {
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
-        if (comfyFormElements.model !== newModel) {
+
+        // --- [v1.5 新增] 擴展 Qwen 模型 UI 自動配置邏輯 ---
+        const isQwenModel = newArchitecture === 'qwen';
+        
+        // 無論模型類型如何，首先恢復所有可能被禁用的控制項
+        [
+            comfyFormElements.sampler_name, 
+            comfyFormElements.scheduler,
+            comfyFormElements.steps, 
+            comfyFormElements.cfg
+        ].forEach(el => {
+            if (el) el.disabled = false;
+        });
+
+        // 清除可能存在的狀態提示
+        if (comfyStatusText) {
+            if (!comfyStatusText.classList.contains('text-danger')) {
+                 comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
+            }
+        }
+
+        if (isQwenModel) {
+            // 如果是 Qwen 模型，則強制設定並禁用所有相關參數
+            console.log('Qwen AIO 模型已選擇，正在自動配置並鎖定 UI 為 LCM 模式...');
+            
+            if (comfyFormElements.sampler_name) {
+                comfyFormElements.sampler_name.value = 'lcm';
+                comfyFormElements.sampler_name.disabled = true;
+            }
+            if (comfyFormElements.scheduler) { // 新增對調度器的處理
+                comfyFormElements.scheduler.value = 'normal';
+                comfyFormElements.scheduler.disabled = true;
+            }
+            if (comfyFormElements.steps) {
+                comfyFormElements.steps.value = 4;
+                comfyFormElements.steps.disabled = true;
+            }
+            if (comfyFormElements.cfg) {
+                comfyFormElements.cfg.value = 1.0;
+                comfyFormElements.cfg.disabled = true;
+            }
+            
+            // 清理 LoRA 列表，因為 Qwen 的 LoRA 是特定的，避免混用
+            if (comfyFormElements.model !== newModel) {
+                comfyFormElements.loras = [];
+                renderSelectedLoras();
+            }
+
+            if (comfyStatusText) {
+                comfyStatusText.innerHTML = '<i class="bi bi-info-circle-fill text-primary"></i> <strong>Qwen LCM 模式已啟用：</strong> 相關參數已為此模型鎖定。';
+            }
+        }
+        
+        // 更新模型選擇
+        if (comfyFormElements.model !== newModel && !isQwenModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
         }
@@ -1189,33 +1244,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
-        // Qwen 模型特殊處理
-        const isQwenModel = newModel.toLowerCase().includes('qwen');
-        if (isQwenModel) {
-            // 設置 Qwen 專用參數
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
-            if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
-            
-            // 使用 Qwen 優化參數
-            if (comfyFormElements.positive_prompt) {
-                const currentPrompt = comfyFormElements.positive_prompt.value;
-                if (!currentPrompt.includes('(Qwen 模式)')) {
-                    comfyFormElements.positive_prompt.value = `${currentPrompt} (Qwen 模式: 寫實, 高解析)`;
-                }
-            }
-            
-            // 清理 LoRA 列表，因為 Qwen 不支援 LoRA
-            comfyFormElements.loras = [];
-            renderSelectedLoras();
-            
-            console.log('Qwen 模式已啟用，參數已最佳化');
-            if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
-        }
-        
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
+// 函式功能：處理使用者選擇新模型的事件，並根據模型類型動態調整 UI
+// 中文註釋：selectModel函式結束
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
