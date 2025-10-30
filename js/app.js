@@ -1178,78 +1178,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         return card;
     }
 
-// 中文註釋：selectModel函式開始
-// 函式功能：處理使用者在模型選擇介面中點擊選擇一個模型的操作
     async function selectModel(item) {
-        /**
-         * v2.0 (Qwen 安全提示): 當選擇 Qwen AIO 模型時，除了自動設定推薦參數外，
-         *      還會在狀態欄顯示一條明確的警告訊息，告知使用者此模型的解析度已被
-         *      後端強制鎖定在 512x512，以管理使用者預期並解釋為何高解析度設定無效。
-         * v1.0 (Qwen AIO 支援): 新增了對 Qwen-Rapid-AIO-NSFW 模型的特別處理邏輯。
-         */
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
-
         if (comfyFormElements.model !== newModel) {
             comfyFormElements.loras = [];
             renderSelectedLoras();
         }
-
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
-        const newModelLower = newModel.toLowerCase();
-        const isQwenAIONSFW = newModelLower.includes('qwen-rapid-aio-nsfw');
-        const isGenericQwen = newModelLower.includes('qwen') && !isQwenAIONSFW;
-
-        if (isQwenAIONSFW) {
-            console.log('Qwen AIO NSFW 模式已啟用，正在自動設定推薦參數...');
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 4;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
-            if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'lcm';
-            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'beta';
-            
-            comfyFormElements.loras = [{ name: 'qwen_anime_nsfw_lora.safetensors', weight: 0.85 }];
-            renderSelectedLoras();
-            
-            // [v2.0 新增] 提供明確的前端提示
-            if (comfyStatusText) {
-                comfyStatusText.innerHTML = `
-                    <div class="alert alert-warning small p-2" role="alert">
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                        <strong>Qwen AIO NSFW 模式已啟用:</strong> 為了穩定性，此模型的解析度已被後端強制鎖定為 <strong>512x512</strong>。
-                    </div>
-                `;
-                comfyStatusText.classList.remove('text-danger', 'text-success');
-            }
-
-        } else if (isGenericQwen) {
-            console.log('通用 Qwen 模式已啟用，參數已最佳化...');
+        // Qwen 模型特殊處理
+        const isQwenModel = newModel.toLowerCase().includes('qwen');
+        if (isQwenModel) {
+            // 設置 Qwen 專用參數
             if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
             if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
             
+            // 使用 Qwen 優化參數
+            if (comfyFormElements.positive_prompt) {
+                const currentPrompt = comfyFormElements.positive_prompt.value;
+                if (!currentPrompt.includes('(Qwen 模式)')) {
+                    comfyFormElements.positive_prompt.value = `${currentPrompt} (Qwen 模式: 寫實, 高解析)`;
+                }
+            }
+            
+            // 清理 LoRA 列表，因為 Qwen 不支援 LoRA
             comfyFormElements.loras = [];
             renderSelectedLoras();
             
-            if (comfyStatusText) {
-                comfyStatusText.textContent = '通用 Qwen (GGUF) 模式已啟用。';
-                comfyStatusText.classList.remove('text-danger');
-                comfyStatusText.classList.add('text-success');
-            }
-        } else {
-             // 如果切換到非 Qwen 模型，清除警告
-            if (comfyStatusText && comfyStatusText.querySelector('.alert')) {
-                comfyStatusText.innerHTML = '請在左側設定參數並點擊生成。';
-            }
+            console.log('Qwen 模式已啟用，參數已最佳化');
+            if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
         }
         
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
-// 函式功能：處理使用者在模型選擇介面中點擊選擇一個模型的操作
-// 中文註釋：selectModel函式結束
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
