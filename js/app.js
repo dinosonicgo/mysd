@@ -6,7 +6,7 @@
  * v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
     // --- 元素選擇器 (通用) ---
     const getById = (id) => document.getElementById(id);
@@ -74,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const comfySpinner = getById('comfy-generate-spinner');
     const comfyStatusText = getById('comfy-status-text');
     const comfyResultImage = getById('comfy-result-image');
-    const comfyResultVideo = getById('comfy-result-video');
     let comfyHistoryGrid = getById('comfy-history-grid');
     const adetailerOptionsDiv = getById('adetailer-options');
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
@@ -122,24 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const controlnetStrengthSlider = getById('comfy-controlnet-strength');
     const controlnetStrengthValueLabel = getById('controlnet-strength-value-label');
     
-    // --- 元素選擇器 (ComfyUI - 影片生成) ---
-    const videoMainPrompt = getById('video-main-prompt');
-    const videoOptimizePositiveCheckbox = getById('video-optimize-positive-checkbox');
-    const videoAiOptimizeCheckbox = getById('video-ai-optimize-checkbox');
-    const videoModelSelect = getById('video-model-select');
-    const videoGenerationModeSelect = getById('video-generation-mode');
-    const videoUploadContainer = getById('video-upload-container');
-    const videoFileInput = getById('video-file-input');
-    const videoUploadArea = getById('video-upload-area');
-    const videoPreviewContainer = getById('video-preview-container');
-    const videoPreview = getById('video-preview');
-    const videoFilename = getById('video-filename');
-    const videoClearBtn = getById('video-clear-btn');
-    const videoFramesInput = getById('video-frames');
-    const videoFpsInput = getById('video-fps');
-    const videoMotionBucketInput = getById('video-motion-bucket');
-    const videoAugmentationLevelSlider = getById('video-augmentation-level');
-    const videoAugmentationLevelLabel = getById('video-augmentation-level-label');
+
 
     // --- 進度條元素 ---
     const comfyProgressContainer = getById('comfy-progress-container');
@@ -151,7 +133,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 元素選擇器 (圖片/影片 Modal) ---
     const imageModal = getById('image-modal');
     const modalImage = getById('modal-image');
-    const modalVideo = getById('modal-video');
     const modalCloseBtn = getById('modal-close-btn');
     const modalPrevBtn = getById('modal-prev-btn');
     const modalNextBtn = getById('modal-next-btn');
@@ -167,12 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
         controlnet_model: getById('modal-controlnet-model'),
         controlnet_preprocessor: getById('modal-controlnet-preprocessor'),
         controlnet_strength: getById('modal-controlnet-strength'),
-        video_info: getById('modal-video-info'),
-        svd_model: getById('modal-svd-model'),
-        video_frames: getById('modal-video-frames'),
-        video_fps: getById('modal-video-fps'),
-        motion_bucket: getById('modal-motion-bucket'),
-        augmentation_level: getById('modal-augmentation-level'),
         input_prompt_container: getById('modal-input-prompt-container'),
         input_prompt: getById('modal-input-prompt'),
         fixed_prompt_container: getById('modal-fixed-prompt-container'),
@@ -245,7 +220,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let sharedConfig = { devices: {} };
     let img2imgState = { source_image: null, inpaint_mask: null, source_image_data: null };
     let controlnetState = { controlnet_image: null };
-    let videoState = { source_image: null };
     let currentHistoryList = [];
     let currentModalIndex = -1;
     let touchStartX = 0;
@@ -375,7 +349,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await Promise.all([
             fetchAndPopulateCheckpoints(),
             fetchAndPopulateControlNetResources(),
-            fetchAndPopulateVideoModels(),
             fetchAndPopulateSamplers(),
             fetchAndPopulateVAEs(),
             fetchDependencyStatus(),
@@ -746,9 +719,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
-        const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
-        const isVideoTabActive = activeTabPane && activeTabPane.id === 'tab-pane-video';
-    
         const settings = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
@@ -764,22 +734,14 @@ document.addEventListener('DOMContentLoaded', () => {
             cfg: comfyFormElements.cfg ? comfyFormElements.cfg.value : 8.0,
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
-            optimize_positive: isVideoTabActive ? (videoOptimizePositiveCheckbox ? videoOptimizePositiveCheckbox.checked : false) : (comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false),
-            ai_optimize: isVideoTabActive ? (videoAiOptimizeCheckbox ? videoAiOptimizeCheckbox.checked : false) : (comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false),
+            optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
+            ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
             adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
             denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
-            video_main_prompt: videoMainPrompt ? videoMainPrompt.value : '',
-            video_params: {
-                svd_model: videoModelSelect ? videoModelSelect.value : '',
-                video_frames: videoFramesInput ? parseInt(videoFramesInput.value, 10) : 25,
-                motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
-                fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
-                augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            },
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded'
         };
 
@@ -849,14 +811,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     comfyFormElements.optimize_positive.checked = settings.optimize_positive;
                     comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
                 }
-                if (videoOptimizePositiveCheckbox) {
-                    videoOptimizePositiveCheckbox.checked = settings.optimize_positive;
-                    videoOptimizePositiveCheckbox.dispatchEvent(new Event('change'));
-                }
             }
-            if (typeof settings.ai_optimize === 'boolean') {
-                if (comfyFormElements.ai_optimize) comfyFormElements.ai_optimize.checked = settings.ai_optimize;
-                if (videoAiOptimizeCheckbox) videoAiOptimizeCheckbox.checked = settings.ai_optimize;
+            if (typeof settings.ai_optimize === 'boolean' && comfyFormElements.ai_optimize) {
+                comfyFormElements.ai_optimize.checked = settings.ai_optimize;
             }
 
             if (typeof settings.translate_negative === 'boolean' && comfyFormElements.translate_negative) {
@@ -870,19 +827,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 comfyFormElements.translate_adetailer_positive.checked = settings.translate_adetailer_positive;
             }
             
-            if (videoMainPrompt) videoMainPrompt.value = settings.video_main_prompt || '';
-            if (settings.video_params) {
-                if(videoModelSelect) videoModelSelect.value = settings.video_params.svd_model || '';
-                if(videoFramesInput) videoFramesInput.value = settings.video_params.video_frames || 25;
-                if(videoMotionBucketInput) videoMotionBucketInput.value = settings.video_params.motion_bucket_id || 127;
-                if(videoFpsInput) videoFpsInput.value = settings.video_params.fps || 6;
-                if(videoAugmentationLevelSlider) {
-                    const aug_level = settings.video_params.augmentation_level || 0.0;
-                    videoAugmentationLevelSlider.value = aug_level;
-                    videoAugmentationLevelSlider.dispatchEvent(new Event('input'));
-                }
-            }
-
             if (settings.vae && comfyFormElements.vae) {
                 // 確保選項已經填充
                 setTimeout(() => {
@@ -1003,10 +947,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if(controlnetFileInput) controlnetFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], controlnetState, controlnetPreview, controlnetUploadArea, controlnetPreviewContainer, controlnetFilename, null, 'controlnet_image'));
     if(controlnetClearBtn) controlnetClearBtn.addEventListener('click', () => resetFileUploadUI(controlnetState, 'controlnet_image', controlnetUploadArea, controlnetPreviewContainer, controlnetPreview, controlnetFilename, null, '點擊上傳參考圖', ''));
 
-    if(videoUploadArea) videoUploadArea.addEventListener('click', () => videoFileInput.click());
-    if(videoFileInput) videoFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], videoState, videoPreview, videoUploadArea, videoPreviewContainer, videoFilename, null, 'source_image'));
-    if(videoClearBtn) videoClearBtn.addEventListener('click', () => resetFileUploadUI(videoState, 'source_image', videoUploadArea, videoPreviewContainer, videoPreview, videoFilename, null, '點擊上傳初始圖片', ''));
-
     function syncDenoiseValues(value) {
         const floatValue = parseFloat(value);
         if (comfyFormElements.denoise) comfyFormElements.denoise.value = floatValue.toFixed(2);
@@ -1017,6 +957,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
+// 中文註釋：fetchAndPopulateCheckpoints函式開始
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
     async function fetchAndPopulateCheckpoints() {
         try {
@@ -1027,20 +968,21 @@ document.addEventListener('DOMContentLoaded', () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
-                // [v18.13 修正] 擴展 SDXL 架構的識別範圍，新增'xl', 'il', 'noobai', 'nai', 'pony'等關鍵字
+                // [v19.0 新增] HiDream 偵測邏輯
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
-                if (modelNameLower.includes('qwen')) {
-                    model.architecture = 'qwen_gguf';
+                if (modelNameLower.includes('hidream')) {
+                    model.architecture = 'hidream';
+                } else if (modelNameLower.includes('qwen')) {
+                    model.architecture = 'qwen';
+                    model.isQwen = true;
                 } else if (modelNameLower.includes('flux')) {
                     model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
                 } else if (modelNameLower.includes('sd3')) {
                     model.architecture = 'sd3';
                 } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
-                    // 如果包含任何 SDXL 家族的關鍵字，則統一歸類為 'sdxl'
                     model.architecture = 'sdxl';
                 } else {
-                    // 對於其他所有模型，作為後備，將其視為 sd1.5
                     model.architecture = 'sd15'; 
                 }
                 return model;
@@ -1061,6 +1003,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
+// 中文註釋：fetchAndPopulateCheckpoints函式結束
+
+
 
     async function fetchAndPopulateVAEs() {
         const vaeSelect = comfyFormElements.vae;
@@ -1098,32 +1043,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('填充 VAE 列表時出錯:', error);
             vaeSelect.innerHTML = `<option value="model_embedded">錯誤: ${error.message}</option>`;
-        }
-    }
-
-    async function fetchAndPopulateVideoModels() {
-        try {
-            const response = await fetchWithUserContext('/api/comfyui/video_models');
-            if (!response.ok) throw new Error('無法獲取影片模型');
-            const models = await response.json();
-            if (videoModelSelect) {
-                videoModelSelect.innerHTML = '';
-                if (models.length === 0) {
-                    videoModelSelect.innerHTML = '<option value="">未找到影片模型</option>';
-                } else {
-                    models.forEach(model => {
-                        const option = document.createElement('option');
-                        option.value = model;
-                        option.textContent = model;
-                        videoModelSelect.appendChild(option);
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('填充影片模型時出錯:', error);
-            if (videoModelSelect) {
-                videoModelSelect.innerHTML = `<option value="">錯誤: ${error.message}</option>`;
-            }
         }
     }
 
@@ -1212,6 +1131,9 @@ document.addEventListener('DOMContentLoaded', () => {
             card.dataset.architecture = item.architecture;
         }
 
+        const isQwenModel = item.name.toLowerCase().includes('qwen');
+        card.dataset.isQwen = isQwenModel;
+
         const imgContainer = document.createElement('div');
         imgContainer.className = 'model-card-img-container';
         if (item.preview_url) {
@@ -1268,6 +1190,31 @@ document.addEventListener('DOMContentLoaded', () => {
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
+        
+        // Qwen 模型特殊處理
+        const isQwenModel = newModel.toLowerCase().includes('qwen');
+        if (isQwenModel) {
+            // 設置 Qwen 專用參數
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
+            
+            // 使用 Qwen 優化參數
+            if (comfyFormElements.positive_prompt) {
+                const currentPrompt = comfyFormElements.positive_prompt.value;
+                if (!currentPrompt.includes('(Qwen 模式)')) {
+                    comfyFormElements.positive_prompt.value = `${currentPrompt} (Qwen 模式: 寫實, 高解析)`;
+                }
+            }
+            
+            // 清理 LoRA 列表，因為 Qwen 不支援 LoRA
+            comfyFormElements.loras = [];
+            renderSelectedLoras();
+            
+            console.log('Qwen 模式已啟用，參數已最佳化');
+            if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
+        }
+        
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
@@ -1791,22 +1738,26 @@ document.addEventListener('DOMContentLoaded', () => {
         connectStatusWebSocket(promptId);
     }
 
+// 中文註釋：handleGenerateClick函式開始
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
-        const activeTabPane = document.querySelector('#control-panel-tab-content .tab-pane.active');
-        const isVideoMode = activeTabPane && activeTabPane.id === 'tab-pane-video';
-    
-        if (!isVideoMode && !comfyFormElements.model) {
+        if (!comfyFormElements.model) {
             alert('請先選擇一個 Checkpoint 模型！');
             return;
         }
-        if (isVideoMode && (!videoModelSelect || !videoModelSelect.value)) {
-            alert('請先選擇一個影片模型！');
-            return;
-        }
     
+        // Qwen 模型參數的特殊處理
+        const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
+        if (isQwenModel) {
+            // 在點擊生成時，再次確保 Qwen 的專用參數被設置
+            console.log("Qwen 模型偵測到，正在強制設定最佳化參數...");
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            // 注意：VAE 的選擇應在 selectModel 時處理，此處不再強制覆蓋，以尊重用戶可能的手動修改
+        }
+
         comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
@@ -1819,12 +1770,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
         await saveSettings();
     
+        // 建立 payload，已移除所有影片相關欄位
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
-            main_prompt: isVideoMode ? '' : (comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : ''),
-            video_main_prompt: isVideoMode ? (videoMainPrompt ? videoMainPrompt.value.trim() : '') : '',
+            main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
@@ -1839,8 +1790,8 @@ document.addEventListener('DOMContentLoaded', () => {
             denoise: comfyFormElements.denoise ? parseFloat(comfyFormElements.denoise.value) : 1.0,
             source_image: img2imgState.source_image,
             inpaint_mask: img2imgState.inpaint_mask,
-            optimize_positive: isVideoMode ? (videoOptimizePositiveCheckbox ? videoOptimizePositiveCheckbox.checked : false) : (comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false),
-            ai_optimize: isVideoMode ? (videoAiOptimizeCheckbox ? videoAiOptimizeCheckbox.checked : false) : (comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false),
+            optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
+            ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
@@ -1852,25 +1803,8 @@ document.addEventListener('DOMContentLoaded', () => {
             controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
-            is_video: isVideoMode,
-            video_params: null,
             vae: comfyFormElements.vae.value
         };
-    
-        if (isVideoMode) {
-            payload.video_params = {
-                svd_model: videoModelSelect ? videoModelSelect.value : '',
-                video_frames: videoFramesInput ? parseInt(videoFramesInput.value, 10) : 25,
-                motion_bucket_id: videoMotionBucketInput ? parseInt(videoMotionBucketInput.value, 10) : 127,
-                fps: videoFpsInput ? parseInt(videoFpsInput.value, 10) : 6,
-                augmentation_level: videoAugmentationLevelSlider ? parseFloat(videoAugmentationLevelSlider.value) : 0.0
-            };
-            if (videoGenerationModeSelect && videoGenerationModeSelect.value === 'image-to-video') {
-                payload.source_image = videoState.source_image;
-            } else {
-                payload.source_image = null;
-            }
-        }
         
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
@@ -1916,6 +1850,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+// 中文註釋：handleGenerateClick函式結束
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
@@ -2062,10 +1997,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        modalImage.style.display = 'none';
-        modalVideo.style.display = 'none';
-        modalVideo.pause();
-        modalVideo.currentTime = 0;
         Object.values(modalParams).forEach(el => {
             if (el && el.style && (el.id.includes('-info') || el.id.includes('-container'))) {
                 el.style.display = 'none';
@@ -2073,15 +2004,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         const fullItemUrl = new URL(item.url, activeDeviceUrl).href;
-
-        if (item.is_video) {
-            modalVideo.src = fullItemUrl;
-            modalVideo.style.display = 'block';
-            modalVideo.play();
-        } else {
-            modalImage.src = fullItemUrl;
-            modalImage.style.display = 'block';
-        }
+        modalImage.src = fullItemUrl;
+        modalImage.style.display = 'block';
 
         if (modalDownloadBtn) {
             modalDownloadBtn.href = fullItemUrl;
@@ -2698,18 +2622,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
         }
-
-        if (videoOptimizePositiveCheckbox && videoAiOptimizeCheckbox) {
-            videoOptimizePositiveCheckbox.addEventListener('change', (e) => {
-                const isEnabled = e.target.checked;
-                videoAiOptimizeCheckbox.disabled = !isEnabled;
-                if (!isEnabled) {
-                    videoAiOptimizeCheckbox.checked = false;
-                }
-            });
-            videoOptimizePositiveCheckbox.dispatchEvent(new Event('change'));
-        }
-
+        
+        // [v23.0 修正] 移除對 videoOptimizePositiveCheckbox 和 videoAiOptimizeCheckbox 的事件監聽，因為它們已被刪除
+        
         if (enableControlnetSwitch) {
             enableControlnetSwitch.addEventListener('change', (e) => {
                 const isEnabled = e.target.checked;
@@ -2725,22 +2640,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        if (videoGenerationModeSelect) {
-            videoGenerationModeSelect.addEventListener('change', (e) => {
-                const showUpload = e.target.value === 'image-to-video';
-                if (videoUploadContainer) videoUploadContainer.style.display = showUpload ? 'block' : 'none';
-                if (!showUpload) resetFileUploadUI(videoState, 'source_image', videoUploadArea, videoPreviewContainer, videoPreview, videoFilename, null, '點擊上傳初始圖片', '');
-            });
-        }
-        if (videoAugmentationLevelSlider && videoAugmentationLevelLabel) {
-            videoAugmentationLevelSlider.addEventListener('input', (e) => {
-                videoAugmentationLevelLabel.textContent = parseFloat(e.target.value).toFixed(2);
-            });
-        }
-
-
-        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; modalVideo.pause(); });
-        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none"; modalVideo.pause();} });
+        // [v23.0 修正] 移除對影片生成相關 UI 元素的事件監聽
+        
+        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; }); // [v23.0 修正] 移除對 modalVideo 的操作
+        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none";} }); // [v23.0 修正] 移除對 modalVideo 的操作
         if (modalPrevBtn) modalPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex - 1); });
         if (modalNextBtn) modalNextBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex + 1); });
         document.addEventListener('keydown', (e) => {
@@ -3039,11 +2942,19 @@ document.addEventListener('DOMContentLoaded', () => {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
     }
-// 函式功能：應用程式的主初始化函式
 // 中文註釋：initialize函式結束
     
-    initialize();
+    try {
+        await initialize();
+        console.log('初始化完成');
+    } catch (error) {
+        console.error('初始化過程中發生錯誤:', error);
+    }
 });
+
+function isQwenModel(modelName) {
+    return modelName.toLowerCase().includes('qwen') || modelName.toLowerCase().includes('diffusion_models/qwen');
+}
 
 function filterModels() {
     const modelSelectionGrid = document.getElementById('model-selection-grid');
@@ -3064,6 +2975,7 @@ function filterModels() {
                 if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
                 if (filter === 'flux' && modelName.includes('flux')) return true;
                 if (filter === 'sdxl' && modelName.includes('pony')) return true;
+                if (filter === 'qwen' && modelName.includes('qwen')) return true;
                 return false;
             });
         }
