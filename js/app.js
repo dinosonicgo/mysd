@@ -968,12 +968,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
-                // [v19.0 新增] HiDream 偵測邏輯
+                // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
-                if (modelNameLower.includes('hidream')) {
-                    model.architecture = 'hidream';
-                } else if (modelNameLower.includes('qwen')) {
+                if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
                     model.isQwen = true;
                 } else if (modelNameLower.includes('flux')) {
