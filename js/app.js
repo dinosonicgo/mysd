@@ -1178,7 +1178,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         return card;
     }
 
+// 中文註釋：selectModel函式開始
+// 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     async function selectModel(item) {
+        /*
+         * v1.0 (Qwen 硬編碼移除): 根據使用者要求，移除了在選擇 Qwen 模型時
+         *      強制將步數(steps)設定為 8 和 CFG 設定為 1.0 的硬編碼邏輯。
+         *      現在函式只負責更新模型名稱和架構，參數將完全由 UI 決定。
+         */
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
         if (comfyFormElements.model !== newModel) {
@@ -1192,16 +1199,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Qwen 模型特殊處理
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         if (isQwenModel) {
-            // 設置 Qwen 專用參數
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            // [v1.0 修正] 移除強制設定 steps 和 cfg 的邏輯
+            
+            // 保留對 VAE 的建議設定，因為這是模型正常運作的關鍵
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
             
-            // 使用 Qwen 優化參數
+            // 保留對提示詞的建議性修改
             if (comfyFormElements.positive_prompt) {
                 const currentPrompt = comfyFormElements.positive_prompt.value;
                 if (!currentPrompt.includes('(Qwen 模式)')) {
-                    comfyFormElements.positive_prompt.value = `${currentPrompt} (Qwen 模式: 寫實, 高解析)`;
+                    comfyFormElements.positive_prompt.value = `${currentPrompt} `;
                 }
             }
             
@@ -1209,13 +1216,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             comfyFormElements.loras = [];
             renderSelectedLoras();
             
-            console.log('Qwen 模式已啟用，參數已最佳化');
+            console.log('Qwen 模式已啟用，部分參數已最佳化。步數與CFG將由使用者介面決定。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
         }
         
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
+// 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
+// 中文註釋：selectModel函式結束
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
@@ -1739,6 +1748,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 中文註釋：handleGenerateClick函式開始
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
+        /*
+         * v2.0 (Qwen 硬編碼徹底移除): 根據使用者回饋，再次確認並徹底移除了
+         *      在點擊生成按鈕時，為 Qwen 模型強制覆蓋步數(steps)為 8 和 CFG 為 1.0 的硬編碼邏輯。
+         *      此版本確保所有參數都嚴格從 UI 當前的值讀取，不再有任何自動修改。
+         */
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
         if (!comfyFormElements.model) {
@@ -1746,14 +1760,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
     
-        // Qwen 模型參數的特殊處理
+        // 檢查是否為 Qwen 模型，僅用於日誌記錄，不修改任何參數
         const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
         if (isQwenModel) {
-            // 在點擊生成時，再次確保 Qwen 的專用參數被設置
-            console.log("Qwen 模型偵測到，正在強制設定最佳化參數...");
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
-            // 注意：VAE 的選擇應在 selectModel 時處理，此處不再強制覆蓋，以尊重用戶可能的手動修改
+            console.log("Qwen 模型偵測到，將嚴格使用介面上的參數進行生成。");
         }
 
         comfyGenerateBtn.disabled = true;
@@ -1768,7 +1778,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
         await saveSettings();
     
-        // 建立 payload，已移除所有影片相關欄位
+        // 建立 payload，此處的值完全來自 UI 當前的狀態
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
