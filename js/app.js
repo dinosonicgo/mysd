@@ -2905,7 +2905,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // 新增的 connectQwenDownloadWebSocket 函式
+// 中文註釋：connectQwenDownloadWebSocket函式開始
+// 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
+// v11.0 (並行進度顯示): [重大功能重構] 為適應後端並行下載，此函式被徹底重寫。它現在能夠動態地為每個接收到進度訊息的檔案創建一個專屬的進度條 DOM 元素（如果尚不存在），並獨立更新其狀態。這解決了之前因 `innerHTML` 覆蓋而無法同時顯示多個進度條的問題。
         function connectQwenDownloadWebSocket(taskId, statusDiv, button) {
              if (downloadWs && downloadWs.readyState === WebSocket.OPEN) downloadWs.close();
 
@@ -2915,59 +2917,73 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             downloadWs = new WebSocket(wsUrl);
             
+            // 為訊息和進度條創建獨立的容器
+            const messageContainer = document.createElement('div');
+            const progressContainer = document.createElement('div');
+            statusDiv.innerHTML = '';
+            statusDiv.appendChild(messageContainer);
+            statusDiv.appendChild(progressContainer);
+
             downloadWs.onopen = () => console.log(`已連接到 Qwen 下載 WebSocket，監聽任務 ID: ${taskId}`);
 
             downloadWs.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 const data = message.data;
-                let html = statusDiv.innerHTML; // 保留舊訊息
 
                 switch (message.type) {
                     case 'status':
-                        html += `<p class="small text-muted mb-1">${data.message}</p>`;
+                        const statusP = document.createElement('p');
+                        statusP.className = 'small text-muted mb-1';
+                        statusP.innerHTML = data.message;
+                        messageContainer.appendChild(statusP);
                         break;
                     case 'progress':
                         const percent = data.progress;
                         const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
                         const totalMB = (data.total / 1024 / 1024).toFixed(2);
-                        // 更新或新增特定檔案的進度條
-                        let progressDiv = statusDiv.querySelector(`#progress-${data.filename_safe}`);
+                        
+                        // 檢查特定檔案的進度條容器是否存在，如果不存在則創建
+                        let progressDiv = progressContainer.querySelector(`#progress-${data.filename_safe}`);
                         if (!progressDiv) {
                             progressDiv = document.createElement('div');
                             progressDiv.id = `progress-${data.filename_safe}`;
-                            statusDiv.appendChild(progressDiv);
+                            progressDiv.className = 'mb-2';
+                            progressContainer.appendChild(progressDiv);
                         }
+                        
+                        // 只更新該檔案的進度條內容
                         progressDiv.innerHTML = `
                             <p class="small fw-bold mb-0">${data.filename}</p>
                             <div class="progress" style="height: 15px;">
                                 <div class="progress-bar bg-success" role="progressbar" style="width: ${percent}%; font-size: 0.7rem;">${percent}%</div>
                             </div>
-                            <p class="small text-end text-muted mt-0">${downloadedMB} / ${totalMB} MB</p>
+                            <p class="small text-end text-muted mt-0 mb-0">${downloadedMB} / ${totalMB} MB</p>
                         `;
                         break;
                     case 'complete':
-                        html += `<div class="alert alert-success small p-2 mt-2"><strong>完成:</strong> ${data.message}</div>`;
+                        messageContainer.innerHTML += `<div class="alert alert-success small p-2 mt-2"><strong>完成:</strong> ${data.message}</div>`;
                         button.disabled = false;
                         button.innerHTML = `<i class="bi bi-check-circle-fill"></i> Qwen 套件已就緒`;
                         downloadWs.close();
                         break;
                     case 'error':
-                        html += `<div class="alert alert-danger small p-2 mt-2"><strong>錯誤:</strong> ${data.message}</div>`;
+                        messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2"><strong>錯誤:</strong> ${data.message}</div>`;
                         button.disabled = false;
                         button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 下載失敗，請重試`;
                         downloadWs.close();
                         break;
                 }
-                 statusDiv.innerHTML = html;
             };
             
             downloadWs.onerror = (error) => {
                  console.error('Qwen 下載 WebSocket 錯誤:', error);
-                 statusDiv.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
+                 messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
                  button.disabled = false;
                  button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
             };
         }
+// 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
+// 中文註釋：connectQwenDownloadWebSocket函式結束
 
 
         modelFilterCheckboxes.forEach(checkbox => {
