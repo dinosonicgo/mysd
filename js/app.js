@@ -2492,6 +2492,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 中文註釋：initialize函式開始
 // 函式功能：應用程式的主初始化函式
     async function initialize() {
+        /*
+         * v10.0 (Qwen 一鍵下載): [功能新增] 新增了对 "下載 Qwen 套件" 按钮的事件监听。
+         *      点击后会呼叫新的后端 API，并使用 WebSocket 接收和显示批量下载的状态。
+         */
         console.log('應用程式已初始化 v18.1');
         
         clientId = getClientId();
@@ -2524,7 +2528,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
         
-        // [v2.0 核心修正] 呼叫全新的多裝置啟動流程
         await loadSharedConfigAndInitialize();
         
         setInterval(pollQueueStatus, 3000); 
@@ -2631,8 +2634,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
         }
         
-        // [v23.0 修正] 移除對 videoOptimizePositiveCheckbox 和 videoAiOptimizeCheckbox 的事件監聽，因為它們已被刪除
-        
         if (enableControlnetSwitch) {
             enableControlnetSwitch.addEventListener('change', (e) => {
                 const isEnabled = e.target.checked;
@@ -2648,10 +2649,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
         
-        // [v23.0 修正] 移除對影片生成相關 UI 元素的事件監聽
-        
-        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; }); // [v23.0 修正] 移除對 modalVideo 的操作
-        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none";} }); // [v23.0 修正] 移除對 modalVideo 的操作
+        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; }); 
+        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none";} }); 
         if (modalPrevBtn) modalPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex - 1); });
         if (modalNextBtn) modalNextBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex + 1); });
         document.addEventListener('keydown', (e) => {
@@ -2855,7 +2854,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // [v1.1 新增] 為"精細提示詞"按鈕綁定事件
         if (fixedPromptSetDetailedBtn && comfyFormElements.fixed_prompt) {
             fixedPromptSetDetailedBtn.addEventListener('click', () => {
                 comfyFormElements.fixed_prompt.value = DETAILED_FIXED_PROMPT;
@@ -2876,6 +2874,101 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (downloadModelForm) {
             downloadModelForm.addEventListener('submit', handleDownloadSubmit);
         }
+
+        // [v10.0 新增] Qwen 套件下载按钮事件监听
+        const downloadQwenBtn = getById('download-qwen-bundle-btn');
+        const qwenStatusDiv = getById('qwen-bundle-status');
+        if (downloadQwenBtn && qwenStatusDiv) {
+            downloadQwenBtn.addEventListener('click', async () => {
+                downloadQwenBtn.disabled = true;
+                downloadQwenBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在提交請求...`;
+                qwenStatusDiv.innerHTML = `<div class="alert alert-info small p-2">正在向後端發送 Qwen 套件下載指令...</div>`;
+
+                try {
+                    const response = await fetchWithUserContext('/api/comfyui/download_qwen_bundle', { method: 'POST' });
+                    const result = await response.json();
+
+                    if (response.ok && result.task_id) {
+                        qwenStatusDiv.innerHTML = `<div class="alert alert-info small p-2">${result.message}</div>`;
+                        // 建立一個專門用於顯示 Qwen 下載進度的 div
+                        const progressDisplay = document.createElement('div');
+                        qwenStatusDiv.appendChild(progressDisplay);
+                        connectQwenDownloadWebSocket(result.task_id, progressDisplay, downloadQwenBtn);
+                    } else {
+                        throw new Error(result.detail || '提交失敗，未收到任務 ID。');
+                    }
+                } catch (error) {
+                    qwenStatusDiv.innerHTML = `<div class="alert alert-danger small p-2">錯誤: ${error.message}</div>`;
+                    downloadQwenBtn.disabled = false;
+                    downloadQwenBtn.innerHTML = `<i class="bi bi-cloud-download-fill"></i> 檢查並下載 Qwen 必要套件`;
+                }
+            });
+        }
+
+        // 新增的 connectQwenDownloadWebSocket 函式
+        function connectQwenDownloadWebSocket(taskId, statusDiv, button) {
+             if (downloadWs && downloadWs.readyState === WebSocket.OPEN) downloadWs.close();
+
+            const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
+            const wsHost = new URL(activeDeviceUrl).host;
+            const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/download/status/${taskId}`;
+
+            downloadWs = new WebSocket(wsUrl);
+            
+            downloadWs.onopen = () => console.log(`已連接到 Qwen 下載 WebSocket，監聽任務 ID: ${taskId}`);
+
+            downloadWs.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                const data = message.data;
+                let html = statusDiv.innerHTML; // 保留舊訊息
+
+                switch (message.type) {
+                    case 'status':
+                        html += `<p class="small text-muted mb-1">${data.message}</p>`;
+                        break;
+                    case 'progress':
+                        const percent = data.progress;
+                        const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
+                        const totalMB = (data.total / 1024 / 1024).toFixed(2);
+                        // 更新或新增特定檔案的進度條
+                        let progressDiv = statusDiv.querySelector(`#progress-${data.filename_safe}`);
+                        if (!progressDiv) {
+                            progressDiv = document.createElement('div');
+                            progressDiv.id = `progress-${data.filename_safe}`;
+                            statusDiv.appendChild(progressDiv);
+                        }
+                        progressDiv.innerHTML = `
+                            <p class="small fw-bold mb-0">${data.filename}</p>
+                            <div class="progress" style="height: 15px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: ${percent}%; font-size: 0.7rem;">${percent}%</div>
+                            </div>
+                            <p class="small text-end text-muted mt-0">${downloadedMB} / ${totalMB} MB</p>
+                        `;
+                        break;
+                    case 'complete':
+                        html += `<div class="alert alert-success small p-2 mt-2"><strong>完成:</strong> ${data.message}</div>`;
+                        button.disabled = false;
+                        button.innerHTML = `<i class="bi bi-check-circle-fill"></i> Qwen 套件已就緒`;
+                        downloadWs.close();
+                        break;
+                    case 'error':
+                        html += `<div class="alert alert-danger small p-2 mt-2"><strong>錯誤:</strong> ${data.message}</div>`;
+                        button.disabled = false;
+                        button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 下載失敗，請重試`;
+                        downloadWs.close();
+                        break;
+                }
+                 statusDiv.innerHTML = html;
+            };
+            
+            downloadWs.onerror = (error) => {
+                 console.error('Qwen 下載 WebSocket 錯誤:', error);
+                 statusDiv.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
+                 button.disabled = false;
+                 button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
+            };
+        }
+
 
         modelFilterCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', filterModels);
@@ -2950,6 +3043,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
     }
+// 函式功能：應用程式的主初始化函式
 // 中文註釋：initialize函式結束
     
     try {
