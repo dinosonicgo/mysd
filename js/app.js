@@ -316,23 +316,89 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
+
+// 中文註釋：resetApplicationState函式開始
+// 函式功能：(全新) 重設應用程式狀態以進行裝置切換
+    async function resetApplicationState() {
+        /**
+         * [v1.0 全新功能]
+         * 執行一個 "硬重設"，在不重新載入頁面的情況下，將應用程式的 UI 和大部分狀態
+         * 恢復到初始狀態。這在切換遠端裝置時至關重要，以防止資料和狀態殘留。
+         */
+        console.log('[State Reset] 正在重設應用程式狀態以切換裝置...');
+
+        // 1. 立即關閉所有 WebSocket 連線
+        if (comfyStatusWs && comfyStatusWs.readyState !== WebSocket.CLOSED) {
+            comfyStatusWs.close();
+            console.log('    -> 狀態 WebSocket 已關閉。');
+        }
+        if (chatWs && chatWs.readyState !== WebSocket.CLOSED) {
+            chatWs.close();
+            console.log('    -> 聊天 WebSocket 已關閉。');
+        }
+        
+        // 2. 重設 ComfyUI 生成相關的 UI 和狀態
+        resetUI(); // 這個現有函式會處理進度條、Spinner 和結果圖片
+
+        // 3. 清空並重設歷史紀錄區域
+        if (comfyHistoryGrid) {
+            comfyHistoryGrid.innerHTML = '<p class="text-muted text-center col-12">正在切換裝置並載入歷史紀錄...</p>';
+        }
+        if (currentHistoryObserver) {
+            currentHistoryObserver.disconnect();
+            currentHistoryObserver = null;
+            console.log('    -> 歷史紀錄無限滾動觀察器已銷毀。');
+        }
+        toggleSelectionMode(false); // 退出選擇模式
+
+        // 4. 重設模型和 LoRA 選擇的顯示
+        if (comfySelectedModelName) comfySelectedModelName.textContent = '載入中...';
+        if (selectedLoraListContainer) selectedLoraListContainer.innerHTML = '<p class="text-muted small">載入中...</p>';
+        comfyFormElements.model = null;
+        comfyFormElements.loras = [];
+        
+        // 5. 清除所有檔案輸入
+        if (img2imgClearBtn) img2imgClearBtn.click();
+        if (maskClearBtn) maskClearBtn.click();
+        if (controlnetClearBtn) controlnetClearBtn.click();
+
+        // 6. 重設聊天介面 (如果存在)
+        if (chatWindow) chatWindow.innerHTML = '';
+        updateChatUI(false); // 重設為未啟動狀態，等待新裝置的狀態檢查
+
+        console.log('[State Reset] 應用程式狀態已重設。');
+    }
+// 函式功能：(全新) 重設應用程式狀態以進行裝置切換
+// 中文註釋：resetApplicationState函式結束
+
+
+
+
 // 中文註釋：switchDevice函式開始
 // 函式功能：處理切換到指定裝置的邏輯
     async function switchDevice(deviceId) {
+        /**
+         * [v2.0 硬重設修正]: [根本性修正] 在函式執行之初，立即呼叫新的 `resetApplicationState` 函式。
+         *      此舉確保在請求新裝置的資料之前，所有前端 UI 元素（歷史紀錄、WebSocket、選擇的模型等）
+         *      都被徹底清空和重設。這從根本上解決了切換裝置後因狀態殘留而需要手動整理頁面的問題。
+         */
         if (!sharedConfig.devices[deviceId] || sharedConfig.devices[deviceId].status !== 'online') {
             alert(`裝置 ${deviceId} 目前不在線或無法連接。`);
             return;
         }
         
         console.log(`正在切換到裝置: ${deviceId}`);
+        document.body.style.cursor = 'wait';
+
+        // [v2.0 新增] 執行硬重設，清空所有舊裝置的狀態
+        await resetApplicationState();
         
         activeDeviceUrl = sharedConfig.devices[deviceId].url;
         localStorage.setItem('gm_last_device', deviceId);
         
         updateDeviceSelectorUI(deviceId);
         
-        document.body.style.cursor = 'wait';
-        
+        // 現在，在一個乾淨的狀態下為新裝置載入所有資料
         await reloadDataForActiveDevice();
         
         document.body.style.cursor = 'default';
@@ -340,6 +406,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 // 函式功能：處理切換到指定裝置的邏輯
 // 中文註釋：switchDevice函式結束
+
+
+
     
 // 中文註釋：reloadDataForActiveDevice函式開始
 // 函式功能：為當前啟用的裝置重新載入所有相關資料
@@ -1182,6 +1251,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     async function selectModel(item) {
         /*
+         * [v2.0 VAE 自動切換]: [功能優化] 新增了在選擇非 Qwen 模型時，
+         *      自動將 VAE 下拉選單重設為「模型內建 VAE」('model_embedded') 的邏輯。
+         *      這可以防止使用者在切換模型後，忘記更改不相容的 VAE 而導致生圖失敗。
          * v1.0 (Qwen 硬編碼移除): 根據使用者要求，移除了在選擇 Qwen 模型時
          *      強制將步數(steps)設定為 8 和 CFG 設定為 1.0 的硬編碼邏輯。
          *      現在函式只負責更新模型名稱和架構，參數將完全由 UI 決定。
@@ -1196,15 +1268,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
-        // Qwen 模型特殊處理
+        // 判斷是否為 Qwen 模型，並據此設定 VAE
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         if (isQwenModel) {
-            // [v1.0 修正] 移除強制設定 steps 和 cfg 的邏輯
-            
-            // 保留對 VAE 的建議設定，因為這是模型正常運作的關鍵
+            // Qwen 模型特殊處理
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
             
-            // 保留對提示詞的建議性修改
             if (comfyFormElements.positive_prompt) {
                 const currentPrompt = comfyFormElements.positive_prompt.value;
                 if (!currentPrompt.includes('(Qwen 模式)')) {
@@ -1212,12 +1281,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
             
-            // 清理 LoRA 列表，因為 Qwen 不支援 LoRA
             comfyFormElements.loras = [];
             renderSelectedLoras();
             
-            console.log('Qwen 模式已啟用，部分參數已最佳化。步數與CFG將由使用者介面決定。');
+            console.log('Qwen 模式已啟用，已自動選擇 Qwen 專用 VAE。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
+        } else {
+            // [v2.0 新增] 對於所有非 Qwen 模型，將 VAE 重設為預設值
+            if (comfyFormElements.vae) {
+                comfyFormElements.vae.value = 'model_embedded';
+                console.log('非 Qwen 模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
+            }
         }
         
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
