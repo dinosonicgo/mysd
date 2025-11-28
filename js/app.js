@@ -1028,6 +1028,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 中文註釋：fetchAndPopulateCheckpoints函式開始
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
+// v18.17 (ZIT 支援): [功能新增] 新增了對 Z-Image-Turbo (ZIT) 的前端識別邏輯。如果後端標記為 'zit'，前端也會同步該架構，以便觸發專屬的參數預設值。
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
@@ -1040,7 +1041,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
-                if (modelNameLower.includes('qwen')) {
+                // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
+                if (model.architecture === 'zit') {
+                    // Do nothing, keep 'zit'
+                } else if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
                     model.isQwen = true;
                 } else if (modelNameLower.includes('flux')) {
@@ -1251,6 +1255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     async function selectModel(item) {
         /*
+         * [v2.1 ZIT 自動設定]: [功能優化] 當選擇 Z-Image-Turbo (ZIT) 模型時，自動設定 VAE 為 'ae.safetensors'，並調整推薦的 Turbo 參數 (Steps: 10, CFG: 2.0)。
          * [v2.0 VAE 自動切換]: [功能優化] 新增了在選擇非 Qwen 模型時，
          *      自動將 VAE 下拉選單重設為「模型內建 VAE」('model_embedded') 的邏輯。
          *      這可以防止使用者在切換模型後，忘記更改不相容的 VAE 而導致生圖失敗。
@@ -1268,8 +1273,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
-        // 判斷是否為 Qwen 模型，並據此設定 VAE
+        // 判斷是否為 Qwen 模型
         const isQwenModel = newModel.toLowerCase().includes('qwen');
+        const isZITModel = newArchitecture === 'zit';
+
         if (isQwenModel) {
             // Qwen 模型特殊處理
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
@@ -1286,11 +1293,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             console.log('Qwen 模式已啟用，已自動選擇 Qwen 專用 VAE。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
+        } else if (isZITModel) {
+            // [v2.1] ZIT 模型特殊處理
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
+            
+            // 自動設定推薦的 Turbo 參數，但允許使用者之後修改
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 10;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 2.0;
+            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
+            
+            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 2.0)。');
+            if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
+
         } else {
-            // [v2.0 新增] 對於所有非 Qwen 模型，將 VAE 重設為預設值
+            // [v2.0 新增] 對於所有非 Qwen/ZIT 模型，將 VAE 重設為預設值
             if (comfyFormElements.vae) {
                 comfyFormElements.vae.value = 'model_embedded';
-                console.log('非 Qwen 模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
+                console.log('通用模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
             }
         }
         
@@ -3168,6 +3187,9 @@ function filterModels() {
                 if (filter === 'flux' && modelName.includes('flux')) return true;
                 if (filter === 'sdxl' && modelName.includes('pony')) return true;
                 if (filter === 'qwen' && modelName.includes('qwen')) return true;
+                // [v18.18] ZIT 篩選支援 (如果有的話，這通常歸類在 SDXL 或需要新的標籤)
+                // 暫時讓 ZIT 在預設情況下顯示，或如果它包含 zit 關鍵字
+                if (modelName.includes('zit')) return true; 
                 return false;
             });
         }
