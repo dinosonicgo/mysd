@@ -835,7 +835,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 // 函式功能：將當前介面上的所有參數設定儲存到後端
 
+// 中文註釋：loadSettings函式開始
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+// v2.2 (移除固定提示詞預設值): [UX修正] 應使用者要求，移除了當固定提示詞為空時自動填入 "masterpiece, best quality," 的行為。現在預設值為空字串，避免干擾使用者自定義的預設值。
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
@@ -865,7 +867,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
-            if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
+            
+            // [v2.2 修正] 將預設值改為空字串，不再自動填入 "masterpiece..."
+            if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || '';
+            
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
             
@@ -929,6 +934,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+// 中文註釋：loadSettings函式結束
     
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
