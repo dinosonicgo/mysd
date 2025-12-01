@@ -788,12 +788,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
+        // [v18.18 修正] 獲取負面提示詞開關狀態
+        const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+        const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
+
         const settings = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
+            // 儲存開關狀態 (透過 extra_flags 或其他方式，這裡為了相容性，我們假設後端會儲存所有欄位，或者我們將其存入 localStorage)
+            // 由於後端 ClientSettings 模型可能未定義此欄位，我們暫時將其存入 localStorage 以便下次載入
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             seed: comfyFormElements.seed ? comfyFormElements.seed.value : 0,
@@ -814,6 +820,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded'
         };
 
+        // 前端持久化開關狀態
+        localStorage.setItem('comfy_use_negative_prompt', useNegativePrompt);
+
         try {
             await fetchWithUserContext('/api/comfyui/settings', {
                 method: 'POST',
@@ -833,6 +842,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!response.ok) throw new Error('無法從伺服器獲取設定。');
             const settings = await response.json();
             
+            // [v18.18 修正] 載入負面提示詞開關狀態
+            const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+            if (useNegativePromptCheckbox) {
+                const savedState = localStorage.getItem('comfy_use_negative_prompt');
+                // 預設為 true (如果沒有儲存過)
+                useNegativePromptCheckbox.checked = savedState === null ? true : (savedState === 'true');
+            }
+
             if (settings.model) {
                 comfyFormElements.model = settings.model;
                 if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model.split(/[\\/]/).pop();
@@ -1842,9 +1859,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         /*
-         * v2.0 (Qwen 硬編碼徹底移除): 根據使用者回饋，再次確認並徹底移除了
-         *      在點擊生成按鈕時，為 Qwen 模型強制覆蓋步數(steps)為 8 和 CFG 為 1.0 的硬編碼邏輯。
-         *      此版本確保所有參數都嚴格從 UI 當前的值讀取，不再有任何自動修改。
+         * v2.1 (負面提示詞開關): [功能新增] 在收集 payload 時，檢查新的 'comfy-use-negative-prompt' Checkbox。
+         *      如果未勾選，強制將 negative_prompt 設為空字串，以支援 Qwen/ZIT 等不建議使用負面提示詞的模型。
          */
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1870,6 +1886,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (positivePromptWarning) positivePromptWarning.style.display = 'none';
     
         await saveSettings();
+        
+        // [v2.1 新增] 獲取負面提示詞開關狀態
+        const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+        const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
     
         // 建立 payload，此處的值完全來自 UI 當前的狀態
         const payload = {
@@ -1879,7 +1899,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
-            negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
+            // [v2.1 修正] 根據開關決定是否發送負面提示詞
+            negative_prompt: (useNegativePrompt && comfyFormElements.negative_prompt) ? comfyFormElements.negative_prompt.value.trim() : '',
             seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
             steps: comfyFormElements.steps ? parseInt(comfyFormElements.steps.value, 10) : 20,
             cfg: comfyFormElements.cfg ? parseFloat(comfyFormElements.cfg.value) : 8.0,
