@@ -1629,11 +1629,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 中文註釋：setupIntersectionObserver函式開始
 // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
+// v3.1 (行動裝置滾動修正): [UX修復] 解決了手機版捲動到 30 張圖卡住的問題。
+// 1. 將 rootMargin 增加到 '300px'，在接近底部前就預先載入，適應手機的慣性捲動。
+// 2. 強制設定載入指示器 (Indicator) 的 gridColumn 為 "1 / -1"，確保它在 Grid 佈局中橫跨整行，避免因擠壓導致無法觸發偵測。
     function setupIntersectionObserver() {
         if (currentHistoryObserver) currentHistoryObserver.disconnect();
         
         const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
         const cache = deviceHistoryCache[deviceId];
+
+        // [v3.1 修正] 確保載入指示器在 Grid 中佔據整行，否則可能無法正確觸發可見性偵測
+        if (historyLoadingIndicator) {
+            historyLoadingIndicator.style.gridColumn = "1 / -1"; 
+            historyLoadingIndicator.style.width = "100%";
+        }
 
         if (!cache || !cache.hasMore) {
             historyLoadingIndicator.textContent = '沒有更多紀錄了';
@@ -1646,29 +1655,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const options = {
             root: comfyHistoryGrid,
-            rootMargin: '0px',
+            // [v3.1 修正] 增大偵測緩衝區至 300px，讓手機在滑動到底部前就觸發載入
+            rootMargin: '300px', 
             threshold: 0.1
         };
 
         currentHistoryObserver = new IntersectionObserver(async (entries) => {
+            // 只要稍微出現 (isIntersecting) 且目前沒有在載入中，就觸發
             if (entries[0].isIntersecting && !isLoadingHistory && cache.hasMore) {
+                console.log('[無限滾動] 觸發載入更多歷史紀錄...');
                 const newItems = await fetchHistory('older');
                 // 將新獲取的項目附加到網格中
                 newItems.forEach(item => {
                     const existingItem = comfyHistoryGrid.querySelector(`.history-item[data-item-id="${item.id}"]`);
                     if (!existingItem) {
-                        const newItemElement = addHistoryItemToGrid(item);
-                        // 將哨兵元素移到最後
-                        comfyHistoryGrid.appendChild(historyLoadingIndicator);
+                        // 注意：addHistoryItemToGrid 內部會自動處理 indicator 的位置
+                        addHistoryItemToGrid(item);
                     }
                 });
+                
+                // 確保哨兵元素 (Loading Indicator) 永遠在最後面
+                if (cache.hasMore) {
+                    comfyHistoryGrid.appendChild(historyLoadingIndicator);
+                }
             }
         }, options);
 
         historyLoadingIndicator.textContent = '正在載入...';
         historyLoadingIndicator.style.display = 'block';
-        if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
-        currentHistoryObserver.observe(historyLoadingIndicator);
+        
+        // 確保 indicator 在 DOM 中才能被觀察
+        if(comfyHistoryGrid) {
+            comfyHistoryGrid.appendChild(historyLoadingIndicator);
+            currentHistoryObserver.observe(historyLoadingIndicator);
+        }
     }
 // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
 // 中文註釋：setupIntersectionObserver函式結束
@@ -1865,8 +1885,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         /*
-         * v2.1 (負面提示詞開關): [功能新增] 在收集 payload 時，檢查新的 'comfy-use-negative-prompt' Checkbox。
-         *      如果未勾選，強制將 negative_prompt 設為空字串，以支援 Qwen/ZIT 等不建議使用負面提示詞的模型。
+         * v2.3 (進度條預算修正): [UX優化] 針對 VAE Tiled 模式，在生成前「預先計算」潛在的 VAE 編碼/解碼步數。
+         *      透過解析度估算分塊數量，並將其加入 `totalExpectedSteps`。
+         *      這樣即使在以圖生圖模式下，進度條也能平滑推進，不會提早顯示 100%。
          */
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1875,7 +1896,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
     
-        // 檢查是否為 Qwen 模型，僅用於日誌記錄，不修改任何參數
         const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
         if (isQwenModel) {
             console.log("Qwen 模型偵測到，將嚴格使用介面上的參數進行生成。");
@@ -1893,11 +1913,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
         await saveSettings();
         
-        // [v2.1 新增] 獲取負面提示詞開關狀態
         const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
         const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
     
-        // 建立 payload，此處的值完全來自 UI 當前的狀態
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
@@ -1905,7 +1923,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
-            // [v2.1 修正] 根據開關決定是否發送負面提示詞
             negative_prompt: (useNegativePrompt && comfyFormElements.negative_prompt) ? comfyFormElements.negative_prompt.value.trim() : '',
             seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
             steps: comfyFormElements.steps ? parseInt(comfyFormElements.steps.value, 10) : 20,
@@ -1934,10 +1951,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             vae: comfyFormElements.vae.value
         };
         
+        // --- 進度條總步數預算 ---
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        const adetailerStepsPerImage = mainSteps;
-        totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerStepsPerImage * batchSize) : 0);
+        
+        // 1. ADetailer 步數
+        const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
+        
+        // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
+        // 假設分塊大小 512，重疊 64，有效步進約 448。
+        // 這只是一個估算值，目的是讓進度條不要太早跑完。
+        const tilesX = Math.ceil(payload.width / 448);
+        const tilesY = Math.ceil(payload.height / 448);
+        const estimatedTilesPerImage = tilesX * tilesY;
+        const estimatedVaeSteps = estimatedTilesPerImage * batchSize;
+
+        // 計算總步數
+        totalExpectedSteps = mainSteps; // KSampler 主生成
+        totalExpectedSteps += adetailerSteps; // ADetailer
+        
+        // 加上 VAE 解碼 (所有模式都會發生)
+        totalExpectedSteps += estimatedVaeSteps; 
+
+        // 如果是「以圖生圖」，還會有 VAE 編碼
+        if (payload.source_image) {
+            totalExpectedSteps += estimatedVaeSteps;
+        }
+
+        console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
 
         try {
             const response = await fetchWithUserContext('/api/comfyui/generate', {
@@ -1999,27 +2040,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                 case 'progress':
                     const data = message.data;
                     
+                    // [v2.3 修正] 穩健的累加邏輯
+                    // 當偵測到新節點開始 (isNewNodeProgress) 時，將「上一個節點的總步數」加入累積值
                     if (isNewNodeProgress) {
                         accumulatedSteps += currentNodeTotalSteps;
                         currentNodeTotalSteps = data.total_steps;
                         isNewNodeProgress = false;
                     }
                     
-                    if (data.current_step === data.total_steps) {
+                    // 偵測該節點是否執行完畢
+                    if (data.current_step >= data.total_steps) {
                         isNewNodeProgress = true;
                     }
 
+                    // 當前總進度 = 之前累積的步數 + 當前節點已跑的步數
                     const currentTotalProgress = accumulatedSteps + data.current_step;
-                    const percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
+                    
+                    // 計算百分比，並限制在 99% (直到生成完畢)
+                    let percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
+                    if (percent > 99) percent = 99; 
 
                     if(comfyStatusText) comfyStatusText.style.display = 'none';
                     if(comfyProgressContainer) comfyProgressContainer.style.display = 'block';
                     if(comfyProgressBar) {
-                        comfyProgressBar.style.width = `${Math.min(percent, 100)}%`;
+                        comfyProgressBar.style.width = `${percent}%`;
                         comfyProgressBar.setAttribute('aria-valuenow', percent);
                     }
                     if(comfyProgressText) {
-                        comfyProgressText.textContent = `總進度 (估算): ${Math.min(percent, 100).toFixed(0)}%`;
+                        comfyProgressText.textContent = `總進度: ${percent.toFixed(0)}%`;
                     }
                     break;
                 case 'item_generated':
@@ -2054,6 +2102,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 comfyResultImage.style.display = 'block';
                             }
                         }
+                        // 生成完成，進度條設為 100%
+                        if(comfyProgressBar) comfyProgressBar.style.width = '100%';
+                        if(comfyProgressText) comfyProgressText.textContent = '生成完成！';
                         isFirstItem = false;
                     }
                     break;
