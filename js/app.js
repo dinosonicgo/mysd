@@ -788,18 +788,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
-        // [v18.18 修正] 獲取負面提示詞開關狀態
-        const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
-        const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
-
         const settings = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
-            // 儲存開關狀態 (透過 extra_flags 或其他方式，這裡為了相容性，我們假設後端會儲存所有欄位，或者我們將其存入 localStorage)
-            // 由於後端 ClientSettings 模型可能未定義此欄位，我們暫時將其存入 localStorage 以便下次載入
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             seed: comfyFormElements.seed ? comfyFormElements.seed.value : 0,
@@ -820,9 +814,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded'
         };
 
-        // 前端持久化開關狀態
-        localStorage.setItem('comfy_use_negative_prompt', useNegativePrompt);
-
         try {
             await fetchWithUserContext('/api/comfyui/settings', {
                 method: 'POST',
@@ -835,23 +826,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 // 函式功能：將當前介面上的所有參數設定儲存到後端
 
-// 中文註釋：loadSettings函式開始
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
-// v2.2 (移除固定提示詞預設值): [UX修正] 應使用者要求，移除了當固定提示詞為空時自動填入 "masterpiece, best quality," 的行為。現在預設值為空字串，避免干擾使用者自定義的預設值。
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
             if (!response.ok) throw new Error('無法從伺服器獲取設定。');
             const settings = await response.json();
             
-            // [v18.18 修正] 載入負面提示詞開關狀態
-            const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
-            if (useNegativePromptCheckbox) {
-                const savedState = localStorage.getItem('comfy_use_negative_prompt');
-                // 預設為 true (如果沒有儲存過)
-                useNegativePromptCheckbox.checked = savedState === null ? true : (savedState === 'true');
-            }
-
             if (settings.model) {
                 comfyFormElements.model = settings.model;
                 if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model.split(/[\\/]/).pop();
@@ -867,10 +848,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
-            
-            // [v2.2 修正] 將預設值改為空字串，不再自動填入 "masterpiece..."
-            if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || '';
-            
+            if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || 'masterpiece, best quality,';
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
             
@@ -934,7 +912,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
-// 中文註釋：loadSettings函式結束
     
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
@@ -1051,7 +1028,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 中文註釋：fetchAndPopulateCheckpoints函式開始
 // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
-// v18.17 (ZIT 支援): [功能新增] 新增了對 Z-Image-Turbo (ZIT) 的前端識別邏輯。如果後端標記為 'zit'，前端也會同步該架構，以便觸發專屬的參數預設值。
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
@@ -1064,10 +1040,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
-                // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
-                if (model.architecture === 'zit') {
-                    // Do nothing, keep 'zit'
-                } else if (modelNameLower.includes('qwen')) {
+                if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
                     model.isQwen = true;
                 } else if (modelNameLower.includes('flux')) {
@@ -1278,7 +1251,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     async function selectModel(item) {
         /*
-         * [v2.1 ZIT 自動設定]: [功能優化] 當選擇 Z-Image-Turbo (ZIT) 模型時，自動設定 VAE 為 'ae.safetensors'，並調整推薦的 Turbo 參數 (Steps: 10, CFG: 2.0)。
          * [v2.0 VAE 自動切換]: [功能優化] 新增了在選擇非 Qwen 模型時，
          *      自動將 VAE 下拉選單重設為「模型內建 VAE」('model_embedded') 的邏輯。
          *      這可以防止使用者在切換模型後，忘記更改不相容的 VAE 而導致生圖失敗。
@@ -1296,10 +1268,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
         
-        // 判斷是否為 Qwen 模型
+        // 判斷是否為 Qwen 模型，並據此設定 VAE
         const isQwenModel = newModel.toLowerCase().includes('qwen');
-        const isZITModel = newArchitecture === 'zit';
-
         if (isQwenModel) {
             // Qwen 模型特殊處理
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
@@ -1316,23 +1286,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             console.log('Qwen 模式已啟用，已自動選擇 Qwen 專用 VAE。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
-        } else if (isZITModel) {
-            // [v2.1] ZIT 模型特殊處理
-            if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
-            
-            // 自動設定推薦的 Turbo 參數，但允許使用者之後修改
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 10;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 2.0;
-            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
-            
-            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 2.0)。');
-            if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
-
         } else {
-            // [v2.0 新增] 對於所有非 Qwen/ZIT 模型，將 VAE 重設為預設值
+            // [v2.0 新增] 對於所有非 Qwen 模型，將 VAE 重設為預設值
             if (comfyFormElements.vae) {
                 comfyFormElements.vae.value = 'model_embedded';
-                console.log('通用模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
+                console.log('非 Qwen 模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
             }
         }
         
@@ -1629,20 +1587,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // 中文註釋：setupIntersectionObserver函式開始
 // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
-// v3.1 (行動裝置滾動修正): [UX修復] 解決了手機版捲動到 30 張圖卡住的問題。
-// 1. 將 rootMargin 增加到 '300px'，在接近底部前就預先載入，適應手機的慣性捲動。
-// 2. 強制設定載入指示器 (Indicator) 的 gridColumn 為 "1 / -1"，確保它在 Grid 佈局中橫跨整行，避免因擠壓導致無法觸發偵測。
     function setupIntersectionObserver() {
         if (currentHistoryObserver) currentHistoryObserver.disconnect();
         
         const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
         const cache = deviceHistoryCache[deviceId];
-
-        // [v3.1 修正] 確保載入指示器在 Grid 中佔據整行，否則可能無法正確觸發可見性偵測
-        if (historyLoadingIndicator) {
-            historyLoadingIndicator.style.gridColumn = "1 / -1"; 
-            historyLoadingIndicator.style.width = "100%";
-        }
 
         if (!cache || !cache.hasMore) {
             historyLoadingIndicator.textContent = '沒有更多紀錄了';
@@ -1655,40 +1604,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const options = {
             root: comfyHistoryGrid,
-            // [v3.1 修正] 增大偵測緩衝區至 300px，讓手機在滑動到底部前就觸發載入
-            rootMargin: '300px', 
+            rootMargin: '0px',
             threshold: 0.1
         };
 
         currentHistoryObserver = new IntersectionObserver(async (entries) => {
-            // 只要稍微出現 (isIntersecting) 且目前沒有在載入中，就觸發
             if (entries[0].isIntersecting && !isLoadingHistory && cache.hasMore) {
-                console.log('[無限滾動] 觸發載入更多歷史紀錄...');
                 const newItems = await fetchHistory('older');
                 // 將新獲取的項目附加到網格中
                 newItems.forEach(item => {
                     const existingItem = comfyHistoryGrid.querySelector(`.history-item[data-item-id="${item.id}"]`);
                     if (!existingItem) {
-                        // 注意：addHistoryItemToGrid 內部會自動處理 indicator 的位置
-                        addHistoryItemToGrid(item);
+                        const newItemElement = addHistoryItemToGrid(item);
+                        // 將哨兵元素移到最後
+                        comfyHistoryGrid.appendChild(historyLoadingIndicator);
                     }
                 });
-                
-                // 確保哨兵元素 (Loading Indicator) 永遠在最後面
-                if (cache.hasMore) {
-                    comfyHistoryGrid.appendChild(historyLoadingIndicator);
-                }
             }
         }, options);
 
         historyLoadingIndicator.textContent = '正在載入...';
         historyLoadingIndicator.style.display = 'block';
-        
-        // 確保 indicator 在 DOM 中才能被觀察
-        if(comfyHistoryGrid) {
-            comfyHistoryGrid.appendChild(historyLoadingIndicator);
-            currentHistoryObserver.observe(historyLoadingIndicator);
-        }
+        if(comfyHistoryGrid) comfyHistoryGrid.appendChild(historyLoadingIndicator);
+        currentHistoryObserver.observe(historyLoadingIndicator);
     }
 // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
 // 中文註釋：setupIntersectionObserver函式結束
@@ -1885,9 +1823,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         /*
-         * v2.3 (進度條預算修正): [UX優化] 針對 VAE Tiled 模式，在生成前「預先計算」潛在的 VAE 編碼/解碼步數。
-         *      透過解析度估算分塊數量，並將其加入 `totalExpectedSteps`。
-         *      這樣即使在以圖生圖模式下，進度條也能平滑推進，不會提早顯示 100%。
+         * v2.0 (Qwen 硬編碼徹底移除): 根據使用者回饋，再次確認並徹底移除了
+         *      在點擊生成按鈕時，為 Qwen 模型強制覆蓋步數(steps)為 8 和 CFG 為 1.0 的硬編碼邏輯。
+         *      此版本確保所有參數都嚴格從 UI 當前的值讀取，不再有任何自動修改。
          */
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
     
@@ -1896,6 +1834,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
     
+        // 檢查是否為 Qwen 模型，僅用於日誌記錄，不修改任何參數
         const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
         if (isQwenModel) {
             console.log("Qwen 模型偵測到，將嚴格使用介面上的參數進行生成。");
@@ -1912,10 +1851,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (positivePromptWarning) positivePromptWarning.style.display = 'none';
     
         await saveSettings();
-        
-        const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
-        const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
     
+        // 建立 payload，此處的值完全來自 UI 當前的狀態
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
@@ -1923,7 +1860,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
-            negative_prompt: (useNegativePrompt && comfyFormElements.negative_prompt) ? comfyFormElements.negative_prompt.value.trim() : '',
+            negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value.trim() : '',
             seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
             steps: comfyFormElements.steps ? parseInt(comfyFormElements.steps.value, 10) : 20,
             cfg: comfyFormElements.cfg ? parseFloat(comfyFormElements.cfg.value) : 8.0,
@@ -1951,34 +1888,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             vae: comfyFormElements.vae.value
         };
         
-        // --- 進度條總步數預算 ---
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        
-        // 1. ADetailer 步數
-        const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
-        
-        // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
-        // 假設分塊大小 512，重疊 64，有效步進約 448。
-        // 這只是一個估算值，目的是讓進度條不要太早跑完。
-        const tilesX = Math.ceil(payload.width / 448);
-        const tilesY = Math.ceil(payload.height / 448);
-        const estimatedTilesPerImage = tilesX * tilesY;
-        const estimatedVaeSteps = estimatedTilesPerImage * batchSize;
-
-        // 計算總步數
-        totalExpectedSteps = mainSteps; // KSampler 主生成
-        totalExpectedSteps += adetailerSteps; // ADetailer
-        
-        // 加上 VAE 解碼 (所有模式都會發生)
-        totalExpectedSteps += estimatedVaeSteps; 
-
-        // 如果是「以圖生圖」，還會有 VAE 編碼
-        if (payload.source_image) {
-            totalExpectedSteps += estimatedVaeSteps;
-        }
-
-        console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
+        const adetailerStepsPerImage = mainSteps;
+        totalExpectedSteps = mainSteps + (payload.enable_adetailer ? (adetailerStepsPerImage * batchSize) : 0);
 
         try {
             const response = await fetchWithUserContext('/api/comfyui/generate', {
@@ -2040,34 +1953,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 case 'progress':
                     const data = message.data;
                     
-                    // [v2.3 修正] 穩健的累加邏輯
-                    // 當偵測到新節點開始 (isNewNodeProgress) 時，將「上一個節點的總步數」加入累積值
                     if (isNewNodeProgress) {
                         accumulatedSteps += currentNodeTotalSteps;
                         currentNodeTotalSteps = data.total_steps;
                         isNewNodeProgress = false;
                     }
                     
-                    // 偵測該節點是否執行完畢
-                    if (data.current_step >= data.total_steps) {
+                    if (data.current_step === data.total_steps) {
                         isNewNodeProgress = true;
                     }
 
-                    // 當前總進度 = 之前累積的步數 + 當前節點已跑的步數
                     const currentTotalProgress = accumulatedSteps + data.current_step;
-                    
-                    // 計算百分比，並限制在 99% (直到生成完畢)
-                    let percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
-                    if (percent > 99) percent = 99; 
+                    const percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
 
                     if(comfyStatusText) comfyStatusText.style.display = 'none';
                     if(comfyProgressContainer) comfyProgressContainer.style.display = 'block';
                     if(comfyProgressBar) {
-                        comfyProgressBar.style.width = `${percent}%`;
+                        comfyProgressBar.style.width = `${Math.min(percent, 100)}%`;
                         comfyProgressBar.setAttribute('aria-valuenow', percent);
                     }
                     if(comfyProgressText) {
-                        comfyProgressText.textContent = `總進度: ${percent.toFixed(0)}%`;
+                        comfyProgressText.textContent = `總進度 (估算): ${Math.min(percent, 100).toFixed(0)}%`;
                     }
                     break;
                 case 'item_generated':
@@ -2102,9 +2008,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 comfyResultImage.style.display = 'block';
                             }
                         }
-                        // 生成完成，進度條設為 100%
-                        if(comfyProgressBar) comfyProgressBar.style.width = '100%';
-                        if(comfyProgressText) comfyProgressText.textContent = '生成完成！';
                         isFirstItem = false;
                     }
                     break;
@@ -3265,9 +3168,6 @@ function filterModels() {
                 if (filter === 'flux' && modelName.includes('flux')) return true;
                 if (filter === 'sdxl' && modelName.includes('pony')) return true;
                 if (filter === 'qwen' && modelName.includes('qwen')) return true;
-                // [v18.18] ZIT 篩選支援 (如果有的話，這通常歸類在 SDXL 或需要新的標籤)
-                // 暫時讓 ZIT 在預設情況下顯示，或如果它包含 zit 關鍵字
-                if (modelName.includes('zit')) return true; 
                 return false;
             });
         }
