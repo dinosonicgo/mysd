@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatModalSaveBtn = getById('chat-modal-save-btn');
 
 
-// --- 元素選擇器 (ComfyUI - 參數設定) ---
+    // --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
@@ -65,8 +65,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         adetailer_steps: getById('comfy-adetailer-steps'),
         denoise: getById('comfy-denoise'),
         vae: getById('comfy-vae-select'),
+        enable_local_translation: getById('comfy-enable-local-translation'),
     };
-// --- 元素選擇器 (ComfyUI - 參數設定) ---
+    // --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfySelectedModelName = getById('comfy-selected-model-name');
     const selectedLoraListContainer = getById('selected-lora-list-container');
     const comfyRandomSeedBtn = getById('comfy-random-seed-btn');
@@ -77,7 +78,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let comfyHistoryGrid = getById('comfy-history-grid');
     const adetailerOptionsDiv = getById('adetailer-options');
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
-    
+
     // --- 元素選擇器 (ComfyUI - 圖像輸入) ---
     const img2imgTab = getById('img2img-tab');
     const img2imgFileInput = getById('img2img-file-input');
@@ -120,14 +121,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const controlnetPreprocessorSelect = getById('comfy-controlnet-preprocessor');
     const controlnetStrengthSlider = getById('comfy-controlnet-strength');
     const controlnetStrengthValueLabel = getById('controlnet-strength-value-label');
-    
+
 
 
     // --- 進度條元素 ---
     const comfyProgressContainer = getById('comfy-progress-container');
     const comfyProgressBar = getById('comfy-progress-bar');
     const comfyProgressText = getById('comfy-progress-text');
-    
+
     let comfyStatusWs = null;
 
     // --- 元素選擇器 (圖片/影片 Modal) ---
@@ -161,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         scheduler: getById('modal-scheduler'),
         optimization_mode: getById('modal-optimization-mode'),
     };
-    
+
     // --- 元素選擇器 (模型/LoRA 選擇 Modal) ---
     const modelSelectionModal = getById('model-selection-modal');
     const modelSelectionGrid = getById('model-selection-grid');
@@ -184,8 +185,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const historyCancelSelectBtn = getById('history-cancel-select-btn');
     const historySelectionCount = getById('history-selection-count');
     const historySelectionCountDelete = getById('history-selection-count-delete');
-    
-// --- 元素選擇器 (預設提示詞按鈕) ---
+
+    // --- 元素選擇器 (預設提示詞按鈕) ---
     const negativePromptSetDefaultBtn = getById('negative-prompt-set-default-btn');
     const negativePromptSetGuroBtn = getById('negative-prompt-set-guro-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
@@ -227,7 +228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isSelectionMode = false;
     let selectedItems = new Set();
     let tempSelectedLoras = new Set();
-    let trackedPromptId = null; 
+    let trackedPromptId = null;
     let wasPreviouslyRunning = false;
     let serviceWorkerRegistration = null;
     let isLoadingHistory = false;
@@ -255,20 +256,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     let accumulatedSteps = 0;
     let currentNodeTotalSteps = 0;
     let isNewNodeProgress = true;
-    
+
     let downloadWs = null;
 
-// --- 預設提示詞常數 ---
+    // --- 預設提示詞常數 ---
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_FIXED_PROMPT = "非常美麗的眼睛，完美傑作，8K，UHD，大光圈，最高畫質";
     const DETAILED_FIXED_PROMPT = "非常美麗的眼睛，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
-// --- 預設提示詞常數 ---
+    // --- 預設提示詞常數 ---
 
-// 中文註釋：fetchWithUserContext函式開始
-// 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
-// v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
-// v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
+    // 中文註釋：fetchWithUserContext函式開始
+    // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
+    // v18.2 (CORS 修正): [功能擴展] 新增了第三個可選參數 `baseUrl`。如果提供了此參數，函式將使用它來建構請求的 URL，而不是依賴全域的 `activeDeviceUrl`。此修改是為了解決 `checkDeviceStatus` 函式需要向多個不同的遠端 URL 發送請求的問題，使其能夠重用此核心請求函式。
+    // v18.1 (服務整合與持久化): [重大架構重構] 1. 實現了按需啟動 AI 聊天服務的完整前端邏輯，包括呼叫新的 system_api 來啟動、檢查和停止服務。 2. 引入了 localStorage 來持久化 client_id，確保 Web 使用者在關閉瀏覽器後仍能保留身份和聊天記錄。 3. 將所有 gemini 相關的變數和元素 ID 重命名為更通用的 chat，以適應新的 AI Lover 服務。 4. 整合了 AI Lover 的指令系統，為新的指令按鈕（初始設定、世界觀等）添加了事件監聽和 Modal 彈窗邏輯。
     async function fetchWithUserContext(path, options = {}, baseUrl = null) {
         const urlSource = baseUrl || activeDeviceUrl;
         if (!urlSource) {
@@ -280,14 +281,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         options.headers = headers;
         return fetch(fullUrl, options);
     }
-// 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
-// 中文註釋：fetchWithUserContext函式結束
-    
-// 中文註釋：checkDeviceStatus函式開始
-// 函式功能：即時檢測指定裝置的在線狀態
-// v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
-// v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
-// v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
+    // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
+    // 中文註釋：fetchWithUserContext函式結束
+
+    // 中文註釋：checkDeviceStatus函式開始
+    // 函式功能：即時檢測指定裝置的在線狀態
+    // v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
+    // v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
+    // v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
     async function checkDeviceStatus(device) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超時
@@ -295,7 +296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             // [v18.2 修正] 改為使用 fetchWithUserContext 以確保請求一致性
             const response = await fetchWithUserContext(
-                '/api/comfyui/device_id', 
+                '/api/comfyui/device_id',
                 {
                     signal: controller.signal,
                     cache: 'no-store'
@@ -311,14 +312,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             return 'offline';
         }
     }
-// 函式功能：即時檢測指定裝置的在線狀態
-// 中文註釋：checkDeviceStatus函式結束
+    // 函式功能：即時檢測指定裝置的在線狀態
+    // 中文註釋：checkDeviceStatus函式結束
 
 
 
 
-// 中文註釋：resetApplicationState函式開始
-// 函式功能：(全新) 重設應用程式狀態以進行裝置切換
+    // 中文註釋：resetApplicationState函式開始
+    // 函式功能：(全新) 重設應用程式狀態以進行裝置切換
     async function resetApplicationState() {
         /**
          * [v1.0 全新功能]
@@ -336,7 +337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             chatWs.close();
             console.log('    -> 聊天 WebSocket 已關閉。');
         }
-        
+
         // 2. 重設 ComfyUI 生成相關的 UI 和狀態
         resetUI(); // 這個現有函式會處理進度條、Spinner 和結果圖片
 
@@ -356,7 +357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (selectedLoraListContainer) selectedLoraListContainer.innerHTML = '<p class="text-muted small">載入中...</p>';
         comfyFormElements.model = null;
         comfyFormElements.loras = [];
-        
+
         // 5. 清除所有檔案輸入
         if (img2imgClearBtn) img2imgClearBtn.click();
         if (maskClearBtn) maskClearBtn.click();
@@ -368,14 +369,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         console.log('[State Reset] 應用程式狀態已重設。');
     }
-// 函式功能：(全新) 重設應用程式狀態以進行裝置切換
-// 中文註釋：resetApplicationState函式結束
+    // 函式功能：(全新) 重設應用程式狀態以進行裝置切換
+    // 中文註釋：resetApplicationState函式結束
 
 
 
 
-// 中文註釋：switchDevice函式開始
-// 函式功能：處理切換到指定裝置的邏輯
+    // 中文註釋：switchDevice函式開始
+    // 函式功能：處理切換到指定裝置的邏輯
     async function switchDevice(deviceId) {
         /**
          * [v2.0 硬重設修正]: [根本性修正] 在函式執行之初，立即呼叫新的 `resetApplicationState` 函式。
@@ -386,35 +387,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             alert(`裝置 ${deviceId} 目前不在線或無法連接。`);
             return;
         }
-        
+
         console.log(`正在切換到裝置: ${deviceId}`);
         document.body.style.cursor = 'wait';
 
         // [v2.0 新增] 執行硬重設，清空所有舊裝置的狀態
         await resetApplicationState();
-        
+
         activeDeviceUrl = sharedConfig.devices[deviceId].url;
         localStorage.setItem('gm_last_device', deviceId);
-        
+
         updateDeviceSelectorUI(deviceId);
-        
+
         // 現在，在一個乾淨的狀態下為新裝置載入所有資料
         await reloadDataForActiveDevice();
-        
+
         document.body.style.cursor = 'default';
         console.log(`已成功切換到 ${deviceId}。`);
     }
-// 函式功能：處理切換到指定裝置的邏輯
-// 中文註釋：switchDevice函式結束
+    // 函式功能：處理切換到指定裝置的邏輯
+    // 中文註釋：switchDevice函式結束
 
 
 
-    
-// 中文註釋：reloadDataForActiveDevice函式開始
-// 函式功能：為當前啟用的裝置重新載入所有相關資料
+
+    // 中文註釋：reloadDataForActiveDevice函式開始
+    // 函式功能：為當前啟用的裝置重新載入所有相關資料
     async function reloadDataForActiveDevice() {
         console.log(`正在為當前裝置 ${activeDeviceUrl} 重新載入所有資料...`);
-        
+
         await Promise.all([
             fetchAndPopulateCheckpoints(),
             fetchAndPopulateControlNetResources(),
@@ -423,22 +424,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             fetchDependencyStatus(),
             checkChatServiceStatus() // 檢查聊天服務狀態
         ]);
-    
+
         await loadSettings();
-    
+
         await initializeHistory();
-    
+
         console.log("資料重新載入完成。");
     }
-// 函式功能：為當前啟用的裝置重新載入所有相關資料
-// 中文註釋：reloadDataForActiveDevice函式結束
+    // 函式功能：為當前啟用的裝置重新載入所有相關資料
+    // 中文註釋：reloadDataForActiveDevice函式結束
 
 
 
 
 
-// 中文註釋：loadSharedConfigAndInitialize函式開始
-// 函式功能：載入共享設定檔並初始化應用程式
+    // 中文註釋：loadSharedConfigAndInitialize函式開始
+    // 函式功能：載入共享設定檔並初始化應用程式
     async function loadSharedConfigAndInitialize() {
         try {
             // [v18.3 修正] 添加時間戳以繞過瀏覽器和 CDN 的快取，確保每次都獲取最新的 config.json
@@ -456,7 +457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } catch (error) {
             console.error(error);
-            if(userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
+            if (userStatusDisplay) userStatusDisplay.textContent = '錯誤: 無法載入遠端設定';
         }
 
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -482,7 +483,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (userContext.user_type === 'gm') {
                 const lastDevice = localStorage.getItem('gm_last_device');
                 const onlineDevices = Object.keys(sharedConfig.devices).filter(id => sharedConfig.devices[id].status === 'online');
-                
+
                 let targetDevice = null;
                 if (lastDevice && onlineDevices.includes(lastDevice)) {
                     targetDevice = lastDevice;
@@ -497,27 +498,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     alert('目前沒有任何遠端裝置在線。');
                 }
             } else { // 非 GM 的遠端訪問者
-                 if(userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
-                 if(deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
-                 if(comfyGenerateBtn) comfyGenerateBtn.disabled = true;
+                if (userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
+                if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
+                if (comfyGenerateBtn) comfyGenerateBtn.disabled = true;
             }
         }
     }
-// 函式功能：載入共享設定檔並初始化應用程式
-// 中文註釋：loadSharedConfigAndInitialize函式結束
+    // 函式功能：載入共享設定檔並初始化應用程式
+    // 中文註釋：loadSharedConfigAndInitialize函式結束
 
-// 中文註釋：updateDeviceSelectorUI函式開始
-// 函式功能：更新裝置選擇器和使用者狀態的 UI 顯示
+    // 中文註釋：updateDeviceSelectorUI函式開始
+    // 函式功能：更新裝置選擇器和使用者狀態的 UI 顯示
     function updateDeviceSelectorUI(currentDeviceId) {
         if (!userStatusDisplay || !gmLoginIcon) return;
-    
+
         if (userContext.user_type === 'gm') {
             gmLoginIcon.innerHTML = '<i class="bi bi-unlock-fill text-warning"></i>';
             gmLoginIcon.title = '已登入為 GM - 點擊登出';
-            
+
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'block';
             if (userStatusDisplay) userStatusDisplay.textContent = `GM @ ${currentDeviceId || '未選擇'}`;
-            
+
             if (deviceSelectionList) {
                 const deviceIds = Object.keys(sharedConfig.devices);
                 deviceSelectionList.innerHTML = '';
@@ -538,7 +539,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     deviceSelectionList.innerHTML = '<li><a class="dropdown-item disabled" href="#">無可用裝置</a></li>';
                 }
-    
+
                 deviceSelectionList.querySelectorAll('.device-select-btn').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         e.preventDefault();
@@ -554,13 +555,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (deviceSelectorDropdown) deviceSelectorDropdown.style.display = 'none';
         }
     }
-// 函式功能：更新裝置選擇器和使用者狀態的 UI 顯示
-// 中文註釋：updateDeviceSelectorUI函式結束
+    // 函式功能：更新裝置選擇器和使用者狀態的 UI 顯示
+    // 中文註釋：updateDeviceSelectorUI函式結束
 
     // --- 頁面切換邏輯 ---
     function switchPage(pageIdToShow) {
-        pages.forEach(page => { if(page) page.style.display = 'none'; });
-        navLinks.forEach(link => { if(link) link.classList.remove('active'); });
+        pages.forEach(page => { if (page) page.style.display = 'none'; });
+        navLinks.forEach(link => { if (link) link.classList.remove('active'); });
         const pageToShow = document.getElementById(pageIdToShow);
         if (pageToShow) pageToShow.style.display = 'block';
         const navId = `nav-${pageIdToShow.replace('-page', '')}`;
@@ -584,10 +585,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!chatWindow) return;
         const messageWrapper = document.createElement('div');
         messageWrapper.className = `chat-message-wrapper ${sender.toLowerCase()}-message`;
-        
+
         const messageBubble = document.createElement('div');
         messageBubble.className = 'message-bubble';
-        
+
         let content;
         try {
             const data = JSON.parse(text);
@@ -596,9 +597,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             content = text;
         }
-        
+
         messageBubble.textContent = content;
-        
+
         messageWrapper.appendChild(messageBubble);
         chatWindow.appendChild(messageWrapper);
         chatWindow.scrollTop = chatWindow.scrollHeight;
@@ -639,7 +640,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             chatStartupStatus.textContent = '錯誤: 無法連接到主伺服器。';
         }
     }
-    
+
     async function startChatService() {
         chatStartBtn.disabled = true;
         chatStartSpinner.style.display = 'inline-block';
@@ -648,7 +649,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetchWithUserContext('/api/system/start_chat_service', { method: 'POST' });
             const data = await response.json();
-            
+
             if (response.ok && data.is_running) {
                 chatStartupStatus.textContent = '服務已啟動，正在建立連線...';
                 await new Promise(resolve => setTimeout(resolve, 1000)); // 等待一下確保服務完全就緒
@@ -670,7 +671,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("已有 WebSocket 連線，將其關閉。");
             chatWs.close();
         }
-        
+
         const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
         const wsHost = new URL(activeDeviceUrl).host;
         const wsUrl = `${wsProtocol}//${wsHost}/api/chat/ws/${clientId}`;
@@ -706,7 +707,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             addChatMessage('SYSTEM', '連線時發生錯誤。');
         };
     }
-    
+
     function sendChatMessage() {
         const message = chatInput.value.trim();
         if (message && chatWs && chatWs.readyState === WebSocket.OPEN) {
@@ -737,11 +738,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             content = data.one_instruction;
             showModal = true;
         }
-        
+
         if (showModal) {
             chatModalTitle.textContent = title;
             chatModalTextarea.value = content;
-            if(bsChatModal) bsChatModal.show();
+            if (bsChatModal) bsChatModal.show();
         }
     }
 
@@ -763,7 +764,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function saveChatSettings() {
         const type = chatModalEl.dataset.settingType;
         const content = chatModalTextarea.value; // 允許空內容
-        
+
         let command = '';
         if (type === 'worldview') command = `/set_worldview ${content}`;
         else if (type === 'aisettings') command = `/set_aisettings ${content}`;
@@ -771,7 +772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (command && chatWs && chatWs.readyState === WebSocket.OPEN) {
             chatWs.send(command);
-            if(bsChatModal) bsChatModal.hide();
+            if (bsChatModal) bsChatModal.hide();
         } else {
             alert('尚未連接到聊天服務，無法保存。');
         }
@@ -786,7 +787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.denoise.value = (isImg2ImgMode || isControlNetMode) ? 0.75 : 1.0;
     }
 
-// 函式功能：將當前介面上的所有參數設定儲存到後端
+    // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
         // [v18.18 修正] 獲取負面提示詞開關狀態
         const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
@@ -817,7 +818,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
             adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
             denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
-            vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded'
+            vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded',
+            enable_local_translation: comfyFormElements.enable_local_translation ? comfyFormElements.enable_local_translation.checked : true
         };
 
         // 前端持久化開關狀態
@@ -833,17 +835,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('儲存設定到後端時發生錯誤:', error);
         }
     }
-// 函式功能：將當前介面上的所有參數設定儲存到後端
+    // 函式功能：將當前介面上的所有參數設定儲存到後端
 
-// 中文註釋：loadSettings函式開始
-// 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
-// v2.2 (移除固定提示詞預設值): [UX修正] 應使用者要求，移除了當固定提示詞為空時自動填入 "masterpiece, best quality," 的行為。現在預設值為空字串，避免干擾使用者自定義的預設值。
+    // 中文註釋：loadSettings函式開始
+    // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+    // v2.2 (移除固定提示詞預設值): [UX修正] 應使用者要求，移除了當固定提示詞為空時自動填入 "masterpiece, best quality," 的行為。現在預設值為空字串，避免干擾使用者自定義的預設值。
     async function loadSettings() {
         try {
             const response = await fetchWithUserContext('/api/comfyui/settings');
             if (!response.ok) throw new Error('無法從伺服器獲取設定。');
             const settings = await response.json();
-            
+
             // [v18.18 修正] 載入負面提示詞開關狀態
             const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
             if (useNegativePromptCheckbox) {
@@ -864,16 +866,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.loras = settings.loras;
                 renderSelectedLoras();
             }
-            
+
             if (comfyFormElements.positive_prompt) comfyFormElements.positive_prompt.value = settings.main_prompt || '';
             if (comfyFormElements.negative_prompt) comfyFormElements.negative_prompt.value = settings.negative_prompt || '';
-            
+
             // [v2.2 修正] 將預設值改為空字串，不再自動填入 "masterpiece..."
             if (comfyFormElements.fixed_prompt) comfyFormElements.fixed_prompt.value = settings.fixed_prompt || '';
-            
+
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
-            
+
             const savedPosition = settings.fixed_prompt_position || 'prepend';
             if (savedPosition === 'append' && comfyFormElements.fixed_prompt_append) {
                 comfyFormElements.fixed_prompt_append.checked = true;
@@ -896,7 +898,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (settings.cfg && comfyFormElements.cfg) comfyFormElements.cfg.value = settings.cfg;
             if (settings.sampler_name && comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = settings.sampler_name;
             if (settings.scheduler && comfyFormElements.scheduler) comfyFormElements.scheduler.value = settings.scheduler;
-            
+
             if (typeof settings.optimize_positive === 'boolean') {
                 if (comfyFormElements.optimize_positive) {
                     comfyFormElements.optimize_positive.checked = settings.optimize_positive;
@@ -917,7 +919,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (typeof settings.translate_adetailer_positive === 'boolean' && comfyFormElements.translate_adetailer_positive) {
                 comfyFormElements.translate_adetailer_positive.checked = settings.translate_adetailer_positive;
             }
-            
+
+            // 載入本地翻譯開關設定
+            if (typeof settings.enable_local_translation === 'boolean' && comfyFormElements.enable_local_translation) {
+                comfyFormElements.enable_local_translation.checked = settings.enable_local_translation;
+            }
+
             if (settings.vae && comfyFormElements.vae) {
                 // 確保選項已經填充
                 setTimeout(() => {
@@ -929,13 +936,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } catch (error) {
             console.error("載入設定失敗，將使用預設值:", error.message);
-            if(comfyFormElements.seed_behavior) comfyFormElements.seed_behavior.value = 'random';
-            if(comfyRandomSeedBtn) comfyRandomSeedBtn.click();
+            if (comfyFormElements.seed_behavior) comfyFormElements.seed_behavior.value = 'random';
+            if (comfyRandomSeedBtn) comfyRandomSeedBtn.click();
         }
     }
-// 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
-// 中文註釋：loadSettings函式結束
-    
+    // 函式功能：從後端載入使用者先前的參數設定，並填充到介面對應的欄位中
+    // 中文註釋：loadSettings函式結束
+
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
         if (!loraSelectionGrid) return;
@@ -962,7 +969,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!file) return null;
         const formData = new FormData();
         formData.append('file', file);
-        
+
         try {
             const response = await fetchWithUserContext('/api/comfyui/upload_image', {
                 method: 'POST',
@@ -983,24 +990,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function handleFileUpload(file, stateObject, previewElement, uploadArea, previewContainer, filenameElement, tabElement, stateKey) {
         if (!file) return;
         uploadArea.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">正在上傳...</p>';
-        
+
         const filename = await uploadImageToServer(file);
         if (filename) {
             stateObject[stateKey] = filename;
             const reader = new FileReader();
-            reader.onload = (e) => { 
-                if(previewElement) previewElement.src = e.target.result; 
+            reader.onload = (e) => {
+                if (previewElement) previewElement.src = e.target.result;
                 if (stateKey === 'source_image') {
                     img2imgState.source_image_data = e.target.result;
-                    if(drawMaskBtn) drawMaskBtn.style.display = 'block';
+                    if (drawMaskBtn) drawMaskBtn.style.display = 'block';
                 }
             };
             reader.readAsDataURL(file);
-            
-            if(uploadArea) uploadArea.style.display = 'none';
-            if(previewContainer) previewContainer.style.display = 'block';
-            if(filenameElement) filenameElement.textContent = file.name;
-            if(tabElement) tabElement.classList.add('active-mode');
+
+            if (uploadArea) uploadArea.style.display = 'none';
+            if (previewContainer) previewContainer.style.display = 'block';
+            if (filenameElement) filenameElement.textContent = file.name;
+            if (tabElement) tabElement.classList.add('active-mode');
             updateDenoiseDefault();
         } else {
             resetFileUploadUI(stateObject, stateKey, uploadArea, previewContainer, previewElement, filenameElement, tabElement);
@@ -1011,33 +1018,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         stateObject[stateKey] = null;
         if (stateKey === 'source_image') {
             img2imgState.source_image_data = null;
-            if(drawMaskBtn) drawMaskBtn.style.display = 'none';
+            if (drawMaskBtn) drawMaskBtn.style.display = 'none';
         }
         const inputElement = uploadArea.previousElementSibling;
-        if(inputElement && inputElement.type === 'file') inputElement.value = '';
+        if (inputElement && inputElement.type === 'file') inputElement.value = '';
 
-        if(uploadArea) {
+        if (uploadArea) {
             uploadArea.innerHTML = `<i class="bi bi-cloud-arrow-up-fill fs-1 text-secondary"></i><p class="mt-2 mb-0">${uploadText}</p><small class="text-muted">${subText}</small>`;
             uploadArea.style.display = 'block';
         }
-        if(previewContainer) previewContainer.style.display = 'none';
-        if(previewElement) previewElement.src = '#';
-        if(filenameElement) filenameElement.textContent = '';
-        if(tabElement) tabElement.classList.remove('active-mode');
+        if (previewContainer) previewContainer.style.display = 'none';
+        if (previewElement) previewElement.src = '#';
+        if (filenameElement) filenameElement.textContent = '';
+        if (tabElement) tabElement.classList.remove('active-mode');
         updateDenoiseDefault();
     }
 
-    if(img2imgUploadArea) img2imgUploadArea.addEventListener('click', () => img2imgFileInput.click());
-    if(img2imgFileInput) img2imgFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], img2imgState, img2imgPreview, img2imgUploadArea, img2imgPreviewContainer, img2imgFilename, img2imgTab, 'source_image'));
-    if(img2imgClearBtn) img2imgClearBtn.addEventListener('click', () => resetFileUploadUI(img2imgState, 'source_image', img2imgUploadArea, img2imgPreviewContainer, img2imgPreview, img2imgFilename, img2imgTab, '點擊此處上傳圖片', '將啟用以圖生圖模式'));
+    if (img2imgUploadArea) img2imgUploadArea.addEventListener('click', () => img2imgFileInput.click());
+    if (img2imgFileInput) img2imgFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], img2imgState, img2imgPreview, img2imgUploadArea, img2imgPreviewContainer, img2imgFilename, img2imgTab, 'source_image'));
+    if (img2imgClearBtn) img2imgClearBtn.addEventListener('click', () => resetFileUploadUI(img2imgState, 'source_image', img2imgUploadArea, img2imgPreviewContainer, img2imgPreview, img2imgFilename, img2imgTab, '點擊此處上傳圖片', '將啟用以圖生圖模式'));
 
-    if(maskUploadArea) maskUploadArea.addEventListener('click', () => maskFileInput.click());
-    if(maskFileInput) maskFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], img2imgState, maskPreview, maskUploadArea, maskPreviewContainer, maskFilename, null, 'inpaint_mask'));
-    if(maskClearBtn) maskClearBtn.addEventListener('click', () => resetFileUploadUI(img2imgState, 'inpaint_mask', maskUploadArea, maskPreviewContainer, maskPreview, maskFilename, null, '點擊上傳遮罩', '白色區域為重繪部分'));
+    if (maskUploadArea) maskUploadArea.addEventListener('click', () => maskFileInput.click());
+    if (maskFileInput) maskFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], img2imgState, maskPreview, maskUploadArea, maskPreviewContainer, maskFilename, null, 'inpaint_mask'));
+    if (maskClearBtn) maskClearBtn.addEventListener('click', () => resetFileUploadUI(img2imgState, 'inpaint_mask', maskUploadArea, maskPreviewContainer, maskPreview, maskFilename, null, '點擊上傳遮罩', '白色區域為重繪部分'));
 
-    if(controlnetUploadArea) controlnetUploadArea.addEventListener('click', () => controlnetFileInput.click());
-    if(controlnetFileInput) controlnetFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], controlnetState, controlnetPreview, controlnetUploadArea, controlnetPreviewContainer, controlnetFilename, null, 'controlnet_image'));
-    if(controlnetClearBtn) controlnetClearBtn.addEventListener('click', () => resetFileUploadUI(controlnetState, 'controlnet_image', controlnetUploadArea, controlnetPreviewContainer, controlnetPreview, controlnetFilename, null, '點擊上傳參考圖', ''));
+    if (controlnetUploadArea) controlnetUploadArea.addEventListener('click', () => controlnetFileInput.click());
+    if (controlnetFileInput) controlnetFileInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0], controlnetState, controlnetPreview, controlnetUploadArea, controlnetPreviewContainer, controlnetFilename, null, 'controlnet_image'));
+    if (controlnetClearBtn) controlnetClearBtn.addEventListener('click', () => resetFileUploadUI(controlnetState, 'controlnet_image', controlnetUploadArea, controlnetPreviewContainer, controlnetPreview, controlnetFilename, null, '點擊上傳參考圖', ''));
 
     function syncDenoiseValues(value) {
         const floatValue = parseFloat(value);
@@ -1049,15 +1056,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
 
-// 中文註釋：fetchAndPopulateCheckpoints函式開始
-// 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
-// v18.17 (ZIT 支援): [功能新增] 新增了對 Z-Image-Turbo (ZIT) 的前端識別邏輯。如果後端標記為 'zit'，前端也會同步該架構，以便觸發專屬的參數預設值。
+    // 中文註釋：fetchAndPopulateCheckpoints函式開始
+    // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
+    // v18.17 (ZIT 支援): [功能新增] 新增了對 Z-Image-Turbo (ZIT) 的前端識別邏輯。如果後端標記為 'zit'，前端也會同步該架構，以便觸發專屬的參數預設值。
     async function fetchAndPopulateCheckpoints() {
         try {
             const checkpointsResponse = await fetchWithUserContext('/api/comfyui/checkpoints');
             if (!checkpointsResponse.ok) throw new Error(`無法獲取 Checkpoints: ${checkpointsResponse.statusText}`);
             let checkpoints = await checkpointsResponse.json();
-            
+
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
@@ -1077,7 +1084,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
                     model.architecture = 'sdxl';
                 } else {
-                    model.architecture = 'sd15'; 
+                    model.architecture = 'sd15';
                 }
                 return model;
             });
@@ -1093,11 +1100,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             await updateLoraListForModel(comfyFormElements.model);
         } catch (error) {
-            if(comfyStatusText) { comfyStatusText.textContent = `錯誤: ${error.message}。`; comfyStatusText.classList.add('text-danger'); }
+            if (comfyStatusText) { comfyStatusText.textContent = `錯誤: ${error.message}。`; comfyStatusText.classList.add('text-danger'); }
         }
     }
-// 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
-// 中文註釋：fetchAndPopulateCheckpoints函式結束
+    // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
+    // 中文註釋：fetchAndPopulateCheckpoints函式結束
 
 
 
@@ -1109,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetchWithUserContext('/api/comfyui/vaes');
             if (!response.ok) throw new Error('無法獲取 VAE 列表');
             const vaes = await response.json();
-            
+
             const currentValue = vaeSelect.value;
             vaeSelect.innerHTML = ''; // 清空現有選項
 
@@ -1178,22 +1185,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function fetchAndPopulateSamplers() {
         const samplerSelect = comfyFormElements.sampler_name;
         const schedulerSelect = comfyFormElements.scheduler;
-    
+
         if (!samplerSelect || !schedulerSelect) return;
-    
+
         try {
             const [samplersRes, schedulersRes] = await Promise.all([
                 fetchWithUserContext('/api/comfyui/samplers'),
                 fetchWithUserContext('/api/comfyui/schedulers')
             ]);
-    
+
             if (!samplersRes.ok || !schedulersRes.ok) {
                 throw new Error('無法從後端獲取採樣器或排程器列表。');
             }
-    
+
             const samplers = await samplersRes.json();
             const schedulers = await schedulersRes.json();
-    
+
             const populateSelect = (selectElement, options) => {
                 const currentValue = selectElement.value;
                 selectElement.innerHTML = '';
@@ -1207,10 +1214,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     selectElement.value = currentValue;
                 }
             };
-    
+
             populateSelect(samplerSelect, samplers);
             populateSelect(schedulerSelect, schedulers);
-    
+
         } catch (error) {
             console.error("填充採樣器/排程器時出錯:", error);
         }
@@ -1220,7 +1227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const card = document.createElement('div');
         card.className = 'model-card';
         card.dataset.itemName = item.name;
-        
+
         if (item.architecture) {
             card.dataset.architecture = item.architecture;
         }
@@ -1239,13 +1246,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             imgContainer.innerHTML = `<i class="bi ${item.name === 'None' ? 'bi-slash-circle' : 'bi-image'}"></i>`;
         }
-        
+
         const title = document.createElement('div');
         title.className = 'model-card-title';
         title.textContent = item.name.split(/[\\/]/).pop();
-        
+
         card.append(imgContainer, title);
-        
+
         if (type === 'model') {
             card.addEventListener('click', () => {
                 if (item.architecture && item.architecture.startsWith('flux')) {
@@ -1274,8 +1281,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return card;
     }
 
-// 中文註釋：selectModel函式開始
-// 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
+    // 中文註釋：selectModel函式開始
+    // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     async function selectModel(item) {
         /*
          * [v2.1 ZIT 自動設定]: [功能優化] 當選擇 Z-Image-Turbo (ZIT) 模型時，自動設定 VAE 為 'ae.safetensors'，並調整推薦的 Turbo 參數 (Steps: 10, CFG: 2.0)。
@@ -1295,7 +1302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.model = newModel;
         comfyFormElements.model_architecture = newArchitecture;
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
-        
+
         // 判斷是否為 Qwen 模型
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         const isZITModel = newArchitecture === 'zit';
@@ -1303,28 +1310,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isQwenModel) {
             // Qwen 模型特殊處理
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
-            
+
             if (comfyFormElements.positive_prompt) {
                 const currentPrompt = comfyFormElements.positive_prompt.value;
                 if (!currentPrompt.includes('(Qwen 模式)')) {
                     comfyFormElements.positive_prompt.value = `${currentPrompt} `;
                 }
             }
-            
+
             comfyFormElements.loras = [];
             renderSelectedLoras();
-            
+
             console.log('Qwen 模式已啟用，已自動選擇 Qwen 專用 VAE。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
         } else if (isZITModel) {
             // [v2.1] ZIT 模型特殊處理
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
-            
+
             // 自動設定推薦的 Turbo 參數，但允許使用者之後修改
             if (comfyFormElements.steps) comfyFormElements.steps.value = 10;
             if (comfyFormElements.cfg) comfyFormElements.cfg.value = 2.0;
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
-            
+
             console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 2.0)。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
 
@@ -1335,12 +1342,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('通用模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
             }
         }
-        
+
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
     }
-// 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
-// 中文註釋：selectModel函式結束
+    // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
+    // 中文註釋：selectModel函式結束
 
     function renderSelectedLoras() {
         if (!selectedLoraListContainer) return;
@@ -1349,11 +1356,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             selectedLoraListContainer.innerHTML = '<p class="text-muted small">未選擇任何 LoRA。</p>';
             return;
         }
-        
+
         comfyFormElements.loras.forEach((lora, index) => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'd-flex align-items-center mb-2';
-            
+
             const nameSpan = document.createElement('span');
             nameSpan.className = 'lora-name';
             nameSpan.textContent = lora.name.split(/[\\/]/).pop();
@@ -1367,16 +1374,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             weightInput.max = 1.5;
             weightInput.step = 0.1;
             weightInput.value = lora.weight;
-            
+
             const weightLabel = document.createElement('span');
             weightLabel.className = 'badge bg-secondary ms-2';
             weightLabel.textContent = lora.weight.toFixed(1);
-            
+
             weightInput.addEventListener('input', () => {
                 lora.weight = parseFloat(weightInput.value);
                 weightLabel.textContent = lora.weight.toFixed(1);
             });
-            
+
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn-close ms-2';
@@ -1384,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.loras.splice(index, 1);
                 renderSelectedLoras();
             });
-            
+
             itemDiv.append(nameSpan, weightInput, weightLabel, removeBtn);
             selectedLoraListContainer.appendChild(itemDiv);
         });
@@ -1412,8 +1419,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-// 中文註釋：addHistoryItemToGrid函式開始
-// 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
+    // 中文註釋：addHistoryItemToGrid函式開始
+    // 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
     function addHistoryItemToGrid(item) {
         if (!comfyHistoryGrid) return;
 
@@ -1437,7 +1444,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             mediaElement.muted = true;
             mediaElement.loop = true;
             mediaElement.preload = 'metadata';
-            
+
             const playIcon = document.createElement('i');
             playIcon.className = 'bi bi-play-circle-fill video-play-icon';
             historyItemDiv.appendChild(playIcon);
@@ -1448,11 +1455,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             mediaElement.alt = item.filename;
             mediaElement.loading = 'lazy';
         }
-        
+
         const selectionOverlay = document.createElement('div');
         selectionOverlay.className = 'selection-overlay';
         selectionOverlay.innerHTML = `<i class="bi bi-check-circle-fill selection-icon"></i>`;
-        
+
         historyItemDiv.addEventListener('click', () => {
             if (isSelectionMode) {
                 toggleItemSelection(historyItemDiv, item.id);
@@ -1467,7 +1474,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         });
-        
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.innerHTML = '<i class="bi bi-trash-fill"></i>';
@@ -1484,14 +1491,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         return historyItemDiv;
     }
-// 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
-// 中文註釋：addHistoryItemToGrid函式結束
+    // 函式功能：創建單個歷史紀錄項目的 DOM 元素並將其附加到歷史網格中
+    // 中文註釋：addHistoryItemToGrid函式結束
 
 
 
 
-// 中文註釋：fetchHistory函式開始
-// 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
+    // 中文註釋：fetchHistory函式開始
+    // 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
     async function fetchHistory(mode = 'initial') {
         if (isLoadingHistory && mode !== 'newer') return [];
         isLoadingHistory = true;
@@ -1514,12 +1521,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (mode === 'newer' && cache.items.length > 0) {
             url = `/api/comfyui/history?after_timestamp=${encodeURIComponent(cache.items[0].created_at)}`;
         }
-        
+
         try {
             const response = await fetchWithUserContext(url);
             if (!response.ok) throw new Error(`無法獲取歷史紀錄: ${response.statusText}`);
             const items = await response.json();
-            
+
             if (mode === 'newer') {
                 cache.items.unshift(...items);
                 if (items.length > 0) renderHistory(cache.items); // 只有在有新項目時才重新渲染整個列表
@@ -1529,7 +1536,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     renderHistory(cache.items);
                 }
             }
-            
+
             if (mode !== 'newer') {
                 cache.hasMore = items.length >= 30;
                 if (!cache.hasMore) {
@@ -1548,16 +1555,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             isLoadingHistory = false;
         }
     }
-// 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
-// 中文註釋：fetchHistory函式結束
+    // 函式功能：根據模式（初次、更舊、更新）從後端非同步獲取歷史紀錄
+    // 中文註釋：fetchHistory函式結束
 
-// 中文註釋：renderHistory函式開始
-// 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
+    // 中文註釋：renderHistory函式開始
+    // 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
     function renderHistory(items) {
         if (!comfyHistoryGrid) return;
-        
+
         comfyHistoryGrid.innerHTML = '';
-        
+
         if (!items || items.length === 0) {
             comfyHistoryGrid.innerHTML = '<p class="text-muted text-center col-12">沒有歷史紀錄。</p>';
             return;
@@ -1580,22 +1587,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             header.className = 'history-date-header';
             header.textContent = date;
             comfyHistoryGrid.appendChild(header);
-            
+
             groupedByDate[date].forEach(item => {
                 addHistoryItemToGrid(item);
             });
         });
     }
-// 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
-// 中文註釋：renderHistory函式結束
+    // 函式功能：根據模式處理傳入的歷史紀錄項目，並更新 currentHistoryList 和 DOM
+    // 中文註釋：renderHistory函式結束
 
 
 
 
 
 
-// 中文註釋：initializeHistory函式開始
-// 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
+    // 中文註釋：initializeHistory函式開始
+    // 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
     async function initializeHistory() {
         if (!comfyHistoryGrid) return;
 
@@ -1604,7 +1611,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentHistoryObserver.disconnect();
             currentHistoryObserver = null;
         }
-        
+
         const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
 
         // [v3.0 效能優化] 檢查裝置快取
@@ -1615,39 +1622,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 如果沒有快取，則從網路獲取
             await fetchHistory('initial');
         }
-        
+
         applyPersistedHighlight();
-        
+
         // [v3.0 行動裝置優化] 為當前裝置設定新的 IntersectionObserver
         setupIntersectionObserver();
     }
-// 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
-// 中文註釋：initializeHistory函式結束
+    // 函式功能：初始化歷史紀錄，包括首次載入資料和設定無限滾動的事件監聽器
+    // 中文註釋：initializeHistory函式結束
 
 
 
 
-// 中文註釋：setupIntersectionObserver函式開始
-// 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
-// v3.1 (行動裝置滾動修正): [UX修復] 解決了手機版捲動到 30 張圖卡住的問題。
-// 1. 將 rootMargin 增加到 '300px'，在接近底部前就預先載入，適應手機的慣性捲動。
-// 2. 強制設定載入指示器 (Indicator) 的 gridColumn 為 "1 / -1"，確保它在 Grid 佈局中橫跨整行，避免因擠壓導致無法觸發偵測。
+    // 中文註釋：setupIntersectionObserver函式開始
+    // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
+    // v3.1 (行動裝置滾動修正): [UX修復] 解決了手機版捲動到 30 張圖卡住的問題。
+    // 1. 將 rootMargin 增加到 '300px'，在接近底部前就預先載入，適應手機的慣性捲動。
+    // 2. 強制設定載入指示器 (Indicator) 的 gridColumn 為 "1 / -1"，確保它在 Grid 佈局中橫跨整行，避免因擠壓導致無法觸發偵測。
     function setupIntersectionObserver() {
         if (currentHistoryObserver) currentHistoryObserver.disconnect();
-        
+
         const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
         const cache = deviceHistoryCache[deviceId];
 
         // [v3.1 修正] 確保載入指示器在 Grid 中佔據整行，否則可能無法正確觸發可見性偵測
         if (historyLoadingIndicator) {
-            historyLoadingIndicator.style.gridColumn = "1 / -1"; 
+            historyLoadingIndicator.style.gridColumn = "1 / -1";
             historyLoadingIndicator.style.width = "100%";
         }
 
         if (!cache || !cache.hasMore) {
             historyLoadingIndicator.textContent = '沒有更多紀錄了';
             historyLoadingIndicator.style.display = 'block';
-            if(comfyHistoryGrid && !comfyHistoryGrid.contains(historyLoadingIndicator)) {
+            if (comfyHistoryGrid && !comfyHistoryGrid.contains(historyLoadingIndicator)) {
                 comfyHistoryGrid.appendChild(historyLoadingIndicator);
             }
             return;
@@ -1656,7 +1663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const options = {
             root: comfyHistoryGrid,
             // [v3.1 修正] 增大偵測緩衝區至 300px，讓手機在滑動到底部前就觸發載入
-            rootMargin: '300px', 
+            rootMargin: '300px',
             threshold: 0.1
         };
 
@@ -1673,7 +1680,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         addHistoryItemToGrid(item);
                     }
                 });
-                
+
                 // 確保哨兵元素 (Loading Indicator) 永遠在最後面
                 if (cache.hasMore) {
                     comfyHistoryGrid.appendChild(historyLoadingIndicator);
@@ -1683,23 +1690,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         historyLoadingIndicator.textContent = '正在載入...';
         historyLoadingIndicator.style.display = 'block';
-        
+
         // 確保 indicator 在 DOM 中才能被觀察
-        if(comfyHistoryGrid) {
+        if (comfyHistoryGrid) {
             comfyHistoryGrid.appendChild(historyLoadingIndicator);
             currentHistoryObserver.observe(historyLoadingIndicator);
         }
     }
-// 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
-// 中文註釋：setupIntersectionObserver函式結束
+    // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
+    // 中文註釋：setupIntersectionObserver函式結束
 
 
 
 
 
 
-// 中文註釋：deleteHistoryItem函式開始
-// 函式功能：從後端和前端刪除指定的歷史紀錄項目
+    // 中文註釋：deleteHistoryItem函式開始
+    // 函式功能：從後端和前端刪除指定的歷史紀錄項目
     async function deleteHistoryItem(id, elementToRemove) {
         try {
             const response = await fetchWithUserContext('/api/comfyui/history', {
@@ -1720,20 +1727,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (deviceHistoryCache[deviceId]) {
                     deviceHistoryCache[deviceId].items = deviceHistoryCache[deviceId].items.filter(item => item.id !== id);
                     if (deviceHistoryCache[deviceId].items.length === 0) {
-                         renderHistory([]); // 如果列表為空，重新渲染以顯示提示
+                        renderHistory([]); // 如果列表為空，重新渲染以顯示提示
                     }
                 }
-                 
-            } else { 
-                throw new Error(result.detail || '刪除失敗'); 
+
+            } else {
+                throw new Error(result.detail || '刪除失敗');
             }
-        } catch (error) { 
-            alert(`刪除失敗: ${error.message}`); 
+        } catch (error) {
+            alert(`刪除失敗: ${error.message}`);
         }
     }
-// 函式功能：從後端和前端刪除指定的歷史紀錄項目
-// 中文註釋：deleteHistoryItem函式結束
-    
+    // 函式功能：從後端和前端刪除指定的歷史紀錄項目
+    // 中文註釋：deleteHistoryItem函式結束
+
     function urlBase64ToUint8Array(base64String) {
         const padding = '='.repeat((4 - base64String.length % 4) % 4);
         const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -1756,11 +1763,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const applicationServerKey = urlBase64ToUint8Array(data.public_key);
             const subscription = await serviceWorkerRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-            
-            await fetchWithUserContext('/api/comfyui/save_subscription', { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify(subscription) 
+
+            await fetchWithUserContext('/api/comfyui/save_subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(subscription)
             });
             console.log('已成功訂閱 Web Push 通知。');
         } catch (error) {
@@ -1769,7 +1776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await updateNotificationUI();
         }
     }
-    
+
     async function unsubscribeFromPush() {
         if (!serviceWorkerRegistration) return;
         try {
@@ -1789,7 +1796,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await updateNotificationUI();
         }
     }
-    
+
     async function updateNotificationUI() {
         if (!notificationStatusBadge || !enableNotificationsBtn) return;
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -1849,21 +1856,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const resetUI = () => {
         if (comfyGenerateBtn) comfyGenerateBtn.disabled = false;
-        if(comfySpinner) comfySpinner.style.display = 'none';
-        if(comfyProgressContainer) comfyProgressContainer.style.display = 'none';
-        if(comfyStatusText) {
+        if (comfySpinner) comfySpinner.style.display = 'none';
+        if (comfyProgressContainer) comfyProgressContainer.style.display = 'none';
+        if (comfyStatusText) {
             if (!comfyStatusText.classList.contains('text-danger')) {
-                 comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
+                comfyStatusText.textContent = '請在左側設定參數並點擊生成。';
             }
             comfyStatusText.classList.remove('text-success');
             comfyStatusText.style.display = 'block';
         }
-        trackedPromptId = null; 
+        trackedPromptId = null;
     };
 
     function setGeneratingState(promptId) {
         if (!promptId) return;
-        trackedPromptId = promptId; 
+        trackedPromptId = promptId;
         if (comfyGenerateBtn) comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
@@ -1873,7 +1880,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (comfyProgressContainer) comfyProgressContainer.style.display = 'none';
         if (positivePromptWarning) positivePromptWarning.style.display = 'none';
-        
+
         accumulatedSteps = 0;
         currentNodeTotalSteps = 0;
         isNewNodeProgress = true;
@@ -1881,8 +1888,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         connectStatusWebSocket(promptId);
     }
 
-// 中文註釋：handleGenerateClick函式開始
-// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+    // 中文註釋：handleGenerateClick函式開始
+    // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
     async function handleGenerateClick() {
         /*
          * v2.3 (進度條預算修正): [UX優化] 針對 VAE Tiled 模式，在生成前「預先計算」潛在的 VAE 編碼/解碼步數。
@@ -1890,12 +1897,12 @@ document.addEventListener('DOMContentLoaded', async () => {
          *      這樣即使在以圖生圖模式下，進度條也能平滑推進，不會提早顯示 100%。
          */
         if (!comfyGenerateBtn || comfyGenerateBtn.disabled) return;
-    
+
         if (!comfyFormElements.model) {
             alert('請先選擇一個 Checkpoint 模型！');
             return;
         }
-    
+
         const isQwenModel = comfyFormElements.model.toLowerCase().includes('qwen');
         if (isQwenModel) {
             console.log("Qwen 模型偵測到，將嚴格使用介面上的參數進行生成。");
@@ -1910,12 +1917,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (comfyProgressContainer) comfyProgressContainer.style.display = 'none';
         if (positivePromptWarning) positivePromptWarning.style.display = 'none';
-    
+
         await saveSettings();
-        
+
         const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
         const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
-    
+
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
@@ -1948,16 +1955,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
-            vae: comfyFormElements.vae.value
+            vae: comfyFormElements.vae.value,
+            enable_local_translation: comfyFormElements.enable_local_translation ? comfyFormElements.enable_local_translation.checked : true
         };
-        
+
         // --- 進度條總步數預算 ---
         const mainSteps = payload.steps;
         const batchSize = payload.batch_size;
-        
+
         // 1. ADetailer 步數
         const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
-        
+
         // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
         // 假設分塊大小 512，重疊 64，有效步進約 448。
         // 這只是一個估算值，目的是讓進度條不要太早跑完。
@@ -1969,9 +1977,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 計算總步數
         totalExpectedSteps = mainSteps; // KSampler 主生成
         totalExpectedSteps += adetailerSteps; // ADetailer
-        
+
         // 加上 VAE 解碼 (所有模式都會發生)
-        totalExpectedSteps += estimatedVaeSteps; 
+        totalExpectedSteps += estimatedVaeSteps;
 
         // 如果是「以圖生圖」，還會有 VAE 編碼
         if (payload.source_image) {
@@ -1986,16 +1994,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-    
+
             if (!response.ok) {
                 let errorMsg = `提交任務失敗，狀態碼: ${response.status}`;
                 try {
                     const errorData = await response.json();
                     errorMsg = errorData.detail || `提交任務失敗: ${response.statusText}`;
-                } catch (e) {}
+                } catch (e) { }
                 throw new Error(errorMsg);
             }
-    
+
             const result = await response.json();
             if (result && result.prompt_id) {
                 setGeneratingState(result.prompt_id);
@@ -2008,7 +2016,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 throw new Error('後端響應格式不正確。');
             }
-    
+
         } catch (error) {
             console.error('生成流程出錯:', error);
             if (comfyStatusText) {
@@ -2018,12 +2026,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetUI();
         }
     }
-// 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
-// 中文註釋：handleGenerateClick函式結束
+    // 函式功能：處理點擊「開始生成」按鈕的事件，收集所有參數並向後端發送生成請求
+    // 中文註釋：handleGenerateClick函式結束
 
     function connectStatusWebSocket(prompt_id) {
         if (comfyStatusWs && comfyStatusWs.readyState === WebSocket.OPEN) comfyStatusWs.close();
-        
+
         const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
         const wsHost = new URL(activeDeviceUrl).host;
         const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/status/${prompt_id}`;
@@ -2039,7 +2047,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             switch (message.type) {
                 case 'progress':
                     const data = message.data;
-                    
+
                     // [v2.3 修正] 穩健的累加邏輯
                     // 當偵測到新節點開始 (isNewNodeProgress) 時，將「上一個節點的總步數」加入累積值
                     if (isNewNodeProgress) {
@@ -2047,7 +2055,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         currentNodeTotalSteps = data.total_steps;
                         isNewNodeProgress = false;
                     }
-                    
+
                     // 偵測該節點是否執行完畢
                     if (data.current_step >= data.total_steps) {
                         isNewNodeProgress = true;
@@ -2055,18 +2063,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     // 當前總進度 = 之前累積的步數 + 當前節點已跑的步數
                     const currentTotalProgress = accumulatedSteps + data.current_step;
-                    
+
                     // 計算百分比，並限制在 99% (直到生成完畢)
                     let percent = totalExpectedSteps > 0 ? (currentTotalProgress / totalExpectedSteps) * 100 : 0;
-                    if (percent > 99) percent = 99; 
+                    if (percent > 99) percent = 99;
 
-                    if(comfyStatusText) comfyStatusText.style.display = 'none';
-                    if(comfyProgressContainer) comfyProgressContainer.style.display = 'block';
-                    if(comfyProgressBar) {
+                    if (comfyStatusText) comfyStatusText.style.display = 'none';
+                    if (comfyProgressContainer) comfyProgressContainer.style.display = 'block';
+                    if (comfyProgressBar) {
                         comfyProgressBar.style.width = `${percent}%`;
                         comfyProgressBar.setAttribute('aria-valuenow', percent);
                     }
-                    if(comfyProgressText) {
+                    if (comfyProgressText) {
                         comfyProgressText.textContent = `總進度: ${percent.toFixed(0)}%`;
                     }
                     break;
@@ -2080,7 +2088,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             positivePromptWarning.style.display = 'block';
                         }
                     } else if (promptText.includes("TRANSLATION_FAILED:")) {
-                         if (positivePromptWarning) {
+                        if (positivePromptWarning) {
                             positivePromptWarning.textContent = '錯誤：提示詞翻譯失敗，請檢查後端日誌。';
                             positivePromptWarning.style.display = 'block';
                         }
@@ -2089,29 +2097,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (isFirstItem) {
                         const fullItemUrl = new URL(itemData.url, activeDeviceUrl).href;
                         if (itemData.is_video) {
-                            if(comfyResultImage) comfyResultImage.style.display = 'none';
-                            if(comfyResultVideo) {
+                            if (comfyResultImage) comfyResultImage.style.display = 'none';
+                            if (comfyResultVideo) {
                                 comfyResultVideo.src = fullItemUrl;
                                 comfyResultVideo.style.display = 'block';
                                 comfyResultVideo.play();
                             }
                         } else {
-                            if(comfyResultVideo) comfyResultVideo.style.display = 'none';
-                            if(comfyResultImage) {
+                            if (comfyResultVideo) comfyResultVideo.style.display = 'none';
+                            if (comfyResultImage) {
                                 comfyResultImage.src = fullItemUrl;
                                 comfyResultImage.style.display = 'block';
                             }
                         }
                         // 生成完成，進度條設為 100%
-                        if(comfyProgressBar) comfyProgressBar.style.width = '100%';
-                        if(comfyProgressText) comfyProgressText.textContent = '生成完成！';
+                        if (comfyProgressBar) comfyProgressBar.style.width = '100%';
+                        if (comfyProgressText) comfyProgressText.textContent = '生成完成！';
                         isFirstItem = false;
                     }
                     break;
-                case 'all_complete': 
+                case 'all_complete':
                     break;
                 case 'error':
-                    if(comfyStatusText) {
+                    if (comfyStatusText) {
                         comfyStatusText.textContent = `錯誤: ${message.data.message}`;
                         comfyStatusText.classList.add('text-danger');
                     }
@@ -2122,7 +2130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyStatusWs.onclose = (event) => console.log(`狀態 WebSocket (Prompt ID: ${prompt_id}) 已關閉。 Code: ${event.code}`);
         comfyStatusWs.onerror = (error) => {
             console.error(`狀態 WebSocket (Prompt ID: ${prompt_id}) 發生錯誤:`, error);
-            if(comfyStatusText) {
+            if (comfyStatusText) {
                 comfyStatusText.textContent = '進度監聽連線錯誤。';
                 comfyStatusText.classList.add('text-danger');
             }
@@ -2133,7 +2141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetchWithUserContext('/api/comfyui/queue/status');
             if (!response.ok) {
-                if(wasPreviouslyRunning) resetUI();
+                if (wasPreviouslyRunning) resetUI();
                 wasPreviouslyRunning = false;
                 return;
             }
@@ -2155,13 +2163,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (error) {
             console.error("輪詢佇列狀態時發生錯誤:", error);
-            if(wasPreviouslyRunning) resetUI();
+            if (wasPreviouslyRunning) resetUI();
             wasPreviouslyRunning = false;
         }
     }
 
-// 中文註釋：showImageInModal函式開始
-// 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
+    // 中文註釋：showImageInModal函式開始
+    // 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
     function showImageInModal(index) {
         // [v2.1 修正] 從快取中獲取當前裝置的正確歷史列表
         const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
@@ -2170,7 +2178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (index < 0 || index >= currentList.length) return;
         currentModalIndex = index;
         const item = currentList[index];
-        
+
         if (!item) {
             console.error("嘗試在燈箱中顯示一個無效的歷史紀錄項目。");
             return;
@@ -2181,7 +2189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 el.style.display = 'none';
             }
         });
-        
+
         const fullItemUrl = new URL(item.url, activeDeviceUrl).href;
         modalImage.src = fullItemUrl;
         modalImage.style.display = 'block';
@@ -2200,7 +2208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             modalParams.vae.textContent = '模型內建';
         }
-        
+
         modalParams.lora_list.innerHTML = '';
         if (params.loras && params.loras.length > 0) {
             const ul = document.createElement('ul');
@@ -2240,7 +2248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         modalParams.optimization_mode.textContent = params.optimization_mode || '無';
-        
+
         const inputPrompt = item.is_video ? params.video_main_prompt : params.main_prompt;
         if (inputPrompt) {
             modalParams.input_prompt.textContent = inputPrompt;
@@ -2254,7 +2262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         modalParams.final_positive_prompt.textContent = params.positive_prompt || '';
         modalParams.negative_prompt.textContent = params.negative_prompt || '';
-        
+
         const otherParams = ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler'];
         otherParams.forEach(key => {
             if (modalParams[key] && params[key] !== undefined) {
@@ -2264,11 +2272,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (modalPrevBtn) modalPrevBtn.style.display = index > 0 ? 'block' : 'none';
         if (modalNextBtn) modalNextBtn.style.display = index < currentList.length - 1 ? 'block' : 'none';
-        
+
         if (imageModal) imageModal.style.display = 'block';
     }
-// 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
-// 中文註釋：showImageInModal函式結束
+    // 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
+    // 中文註釋：showImageInModal函式結束
 
     function toggleSelectionMode(enable) {
         isSelectionMode = enable;
@@ -2332,7 +2340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             y: evt.clientY - rect.top
         };
     }
-    
+
     function getTouchPos(canvas, touch) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -2344,7 +2352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function drawOnCanvas(e) {
         if (!isDrawing) return;
         e.preventDefault();
-        
+
         let currentPos;
         if (e.touches && e.touches[0]) {
             currentPos = getTouchPos(inpaintCanvas, e.touches[0]);
@@ -2414,7 +2422,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             drawnCtx.putImageData(drawnImageData, 0, 0);
 
             tempCtx.drawImage(drawnCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
-            
+
             tempCanvas.toBlob(async (blob) => {
                 await handleDrawnMask(blob);
                 if (bsInpaintCanvasModal) bsInpaintCanvasModal.hide();
@@ -2422,7 +2430,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
         originalImage.src = img2imgState.source_image_data;
     }
-    
+
     function connectDownloadWebSocket(taskId, statusDiv) {
         if (downloadWs && downloadWs.readyState === WebSocket.OPEN) {
             downloadWs.close();
@@ -2590,8 +2598,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const statusDiv = document.getElementById('dependency-download-status');
         const closeBtn = document.getElementById('dependency-download-close-btn');
-        if(closeBtn) closeBtn.disabled = true;
-        if(statusDiv) statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載請求...</div>';
+        if (closeBtn) closeBtn.disabled = true;
+        if (statusDiv) statusDiv.innerHTML = '<div class="alert alert-info">正在提交下載請求...</div>';
 
         try {
             const response = await fetchWithUserContext('/api/comfyui/download_dependency', {
@@ -2609,11 +2617,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
             const wsHost = new URL(activeDeviceUrl).host;
             const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/status/${taskId}`;
-            
+
             const ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                if(statusDiv) statusDiv.innerHTML = '<div class="alert alert-info">已連接到伺服器，等待下載開始...</div>';
+                if (statusDiv) statusDiv.innerHTML = '<div class="alert alert-info">已連接到伺服器，等待下載開始...</div>';
             };
 
             ws.onmessage = (event) => {
@@ -2624,15 +2632,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const percent = data.progress;
                         const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
                         const totalMB = (data.total / 1024 / 1024).toFixed(2);
-                        if(statusDiv) statusDiv.innerHTML = `
+                        if (statusDiv) statusDiv.innerHTML = `
                             <div class="progress" style="height: 20px;">
                                 <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: ${percent}%;">${percent}%</div>
                             </div>
                             <div class="text-center small mt-1">${downloadedMB} MB / ${totalMB} MB</div>`;
                         break;
                     case 'complete':
-                        if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
-                        if(closeBtn) closeBtn.disabled = false;
+                        if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                        if (closeBtn) closeBtn.disabled = false;
                         dependencyModelsStatus[modelKey].exists = true;
                         ws.close();
                         setTimeout(async () => {
@@ -2641,8 +2649,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }, 1500);
                         break;
                     case 'error':
-                        if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${data.message}</div>`;
-                        if(closeBtn) closeBtn.disabled = false;
+                        if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${data.message}</div>`;
+                        if (closeBtn) closeBtn.disabled = false;
                         ws.close();
                         break;
                 }
@@ -2650,25 +2658,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             ws.onerror = (error) => {
                 console.error('依賴模型下載 WebSocket 錯誤:', error);
-                if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">無法連接到下載進度伺服器。</div>`;
-                if(closeBtn) closeBtn.disabled = false;
+                if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">無法連接到下載進度伺服器。</div>`;
+                if (closeBtn) closeBtn.disabled = false;
             };
 
         } catch (error) {
-            if(statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
-            if(closeBtn) closeBtn.disabled = false;
+            if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger">錯誤: ${error.message}</div>`;
+            if (closeBtn) closeBtn.disabled = false;
         }
     }
 
-// 中文註釋：initialize函式開始
-// 函式功能：應用程式的主初始化函式
+    // 中文註釋：initialize函式開始
+    // 函式功能：應用程式的主初始化函式
     async function initialize() {
         /*
          * v10.0 (Qwen 一鍵下載): [功能新增] 新增了对 "下載 Qwen 套件" 按钮的事件监听。
          *      点击后会呼叫新的后端 API，并使用 WebSocket 接收和显示批量下载的状态。
          */
         console.log('應用程式已初始化 v18.1');
-        
+
         clientId = getClientId();
         console.log(`客戶端 ID 已設定為: ${clientId}`);
 
@@ -2680,11 +2688,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         await updateNotificationUI();
-        
+
         if (enableNotificationsBtn) {
             enableNotificationsBtn.addEventListener('click', async () => {
                 const currentText = enableNotificationsBtn.textContent.trim();
-                
+
                 if (currentText === '禁用通知') {
                     await unsubscribeFromPush();
                 } else {
@@ -2698,11 +2706,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
-        
+
         await loadSharedConfigAndInitialize();
-        
-        setInterval(pollQueueStatus, 3000); 
-        
+
+        setInterval(pollQueueStatus, 3000);
+
         // --- 初始化 Bootstrap Modals ---
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
         if (loraSelectionModal) bsLoraSelectionModal = new bootstrap.Modal(loraSelectionModal);
@@ -2770,15 +2778,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
-        
+
         // ComfyUI 全域控制
-        if(comfyGenerateBtn) comfyGenerateBtn.addEventListener('click', handleGenerateClick);
-        if(comfyRandomSeedBtn) {
+        if (comfyGenerateBtn) comfyGenerateBtn.addEventListener('click', handleGenerateClick);
+        if (comfyRandomSeedBtn) {
             comfyRandomSeedBtn.addEventListener('click', () => {
-                if(comfyFormElements.seed) comfyFormElements.seed.value = Math.floor(Math.random() * 1000000000000000);
+                if (comfyFormElements.seed) comfyFormElements.seed.value = Math.floor(Math.random() * 1000000000000000);
             });
         }
-        if(comfyFormElements.seed_behavior) {
+        if (comfyFormElements.seed_behavior) {
             comfyFormElements.seed_behavior.addEventListener('change', (e) => {
                 const isRandom = e.target.value === 'random';
                 if (comfyFormElements.seed) comfyFormElements.seed.disabled = isRandom;
@@ -2804,7 +2812,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
         }
-        
+
         if (enableControlnetSwitch) {
             enableControlnetSwitch.addEventListener('change', (e) => {
                 const isEnabled = e.target.checked;
@@ -2819,9 +2827,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 controlnetStrengthValueLabel.textContent = parseFloat(e.target.value).toFixed(2);
             });
         }
-        
-        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; }); 
-        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none";} }); 
+
+        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; });
+        if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none"; } });
         if (modalPrevBtn) modalPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex - 1); });
         if (modalNextBtn) modalNextBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex + 1); });
         document.addEventListener('keydown', (e) => {
@@ -2831,12 +2839,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 else if (e.key === 'Escape') modalCloseBtn.click();
             }
         });
-        
+
         if (imageModal) {
             const modalContent = imageModal.querySelector('.image-modal-content-wrapper');
             if (modalContent) {
-                 modalContent.addEventListener('touchstart', (e) => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
-                 modalContent.addEventListener('touchend', (e) => { touchEndX = e.changedTouches[0].screenX; handleSwipe(); }, { passive: true });
+                modalContent.addEventListener('touchstart', (e) => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+                modalContent.addEventListener('touchend', (e) => { touchEndX = e.changedTouches[0].screenX; handleSwipe(); }, { passive: true });
             }
         }
         function handleSwipe() {
@@ -2909,7 +2917,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (bsLoraSelectionModal) bsLoraSelectionModal.hide();
             });
         }
-        
+
         if (modelSelectionModal) {
             modelSelectionModal.addEventListener('show.bs.modal', async () => {
                 if (modelSelectionGrid) modelSelectionGrid.innerHTML = '<p class="text-muted">正在刷新模型列表...</p>';
@@ -2946,7 +2954,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 toggleSelectionMode(false);
             }
         });
-        
+
         if (historyBatchDeleteBtn) {
             historyBatchDeleteBtn.addEventListener('click', async () => {
                 if (selectedItems.size === 0) return;
@@ -2954,13 +2962,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const idsToDelete = Array.from(selectedItems);
                     try {
                         const response = await fetchWithUserContext('/api/comfyui/history/batch-delete', {
-                             method: 'POST',
-                             headers: { 'Content-Type': 'application/json' },
-                             body: JSON.stringify({ ids: idsToDelete })
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ids: idsToDelete })
                         });
                         const result = await response.json();
                         if (!response.ok) throw new Error(result.detail || '批次刪除失敗');
-                        
+
                         console.log(result.message);
                         if (result.details && result.details.errors && result.details.errors.length > 0) {
                             alert(`部分項目刪除失敗:\n${result.details.errors.join('\n')}`);
@@ -2978,7 +2986,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         toggleSelectionMode(false);
 
                     } catch (error) {
-                         alert(`刪除時發生錯誤: ${error.message}`);
+                        alert(`刪除時發生錯誤: ${error.message}`);
                     }
                 }
             });
@@ -3018,7 +3026,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.negative_prompt.value = DEFAULT_NEGATIVE_PROMPT_GENERAL;
             });
         }
-        
+
         if (negativePromptSetGuroBtn && comfyFormElements.negative_prompt) {
             negativePromptSetGuroBtn.addEventListener('click', () => {
                 comfyFormElements.negative_prompt.value = DEFAULT_NEGATIVE_PROMPT_GURO;
@@ -3076,18 +3084,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-// 中文註釋：connectQwenDownloadWebSocket函式開始
-// 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
-// v11.0 (並行進度顯示): [重大功能重構] 為適應後端並行下載，此函式被徹底重寫。它現在能夠動態地為每個接收到進度訊息的檔案創建一個專屬的進度條 DOM 元素（如果尚不存在），並獨立更新其狀態。這解決了之前因 `innerHTML` 覆蓋而無法同時顯示多個進度條的問題。
+        // 中文註釋：connectQwenDownloadWebSocket函式開始
+        // 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
+        // v11.0 (並行進度顯示): [重大功能重構] 為適應後端並行下載，此函式被徹底重寫。它現在能夠動態地為每個接收到進度訊息的檔案創建一個專屬的進度條 DOM 元素（如果尚不存在），並獨立更新其狀態。這解決了之前因 `innerHTML` 覆蓋而無法同時顯示多個進度條的問題。
         function connectQwenDownloadWebSocket(taskId, statusDiv, button) {
-             if (downloadWs && downloadWs.readyState === WebSocket.OPEN) downloadWs.close();
+            if (downloadWs && downloadWs.readyState === WebSocket.OPEN) downloadWs.close();
 
             const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
             const wsHost = new URL(activeDeviceUrl).host;
             const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/download/status/${taskId}`;
 
             downloadWs = new WebSocket(wsUrl);
-            
+
             // 為訊息和進度條創建獨立的容器
             const messageContainer = document.createElement('div');
             const progressContainer = document.createElement('div');
@@ -3112,7 +3120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const percent = data.progress;
                         const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(2);
                         const totalMB = (data.total / 1024 / 1024).toFixed(2);
-                        
+
                         // 檢查特定檔案的進度條容器是否存在，如果不存在則創建
                         let progressDiv = progressContainer.querySelector(`#progress-${data.filename_safe}`);
                         if (!progressDiv) {
@@ -3121,7 +3129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             progressDiv.className = 'mb-2';
                             progressContainer.appendChild(progressDiv);
                         }
-                        
+
                         // 只更新該檔案的進度條內容
                         progressDiv.innerHTML = `
                             <p class="small fw-bold mb-0">${data.filename}</p>
@@ -3145,16 +3153,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         break;
                 }
             };
-            
+
             downloadWs.onerror = (error) => {
-                 console.error('Qwen 下載 WebSocket 錯誤:', error);
-                 messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
-                 button.disabled = false;
-                 button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
+                console.error('Qwen 下載 WebSocket 錯誤:', error);
+                messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
+                button.disabled = false;
+                button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
             };
         }
-// 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
-// 中文註釋：connectQwenDownloadWebSocket函式結束
+        // 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
+        // 中文註釋：connectQwenDownloadWebSocket函式結束
 
 
         modelFilterCheckboxes.forEach(checkbox => {
@@ -3230,9 +3238,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
     }
-// 函式功能：應用程式的主初始化函式
-// 中文註釋：initialize函式結束
-    
+    // 函式功能：應用程式的主初始化函式
+    // 中文註釋：initialize函式結束
+
     try {
         await initialize();
         console.log('初始化完成');
@@ -3267,7 +3275,7 @@ function filterModels() {
                 if (filter === 'qwen' && modelName.includes('qwen')) return true;
                 // [v18.18] ZIT 篩選支援 (如果有的話，這通常歸類在 SDXL 或需要新的標籤)
                 // 暫時讓 ZIT 在預設情況下顯示，或如果它包含 zit 關鍵字
-                if (modelName.includes('zit')) return true; 
+                if (modelName.includes('zit')) return true;
                 return false;
             });
         }
