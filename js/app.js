@@ -251,6 +251,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let lastX = 0;
     let lastY = 0;
 
+
     // 總進度條相關狀態變數
     let totalExpectedSteps = 0;
     let accumulatedSteps = 0;
@@ -2846,13 +2847,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 updateDenoiseDefault();
             });
         }
-        if (controlnetStrengthSlider && controlnetStrengthValueLabel) {
+        if (controlnetStrengthSlider && controlnetStrengthNumber) {
             controlnetStrengthSlider.addEventListener('input', (e) => {
-                controlnetStrengthValueLabel.textContent = parseFloat(e.target.value).toFixed(2);
+                controlnetStrengthNumber.value = parseFloat(e.target.value).toFixed(2);
             });
         }
 
-        if (modalCloseBtn) modalCloseBtn.addEventListener('click', () => { if (imageModal) imageModal.style.display = "none"; });
+        if (modalCloseBtn) {
+            console.log("modalCloseBtn found, attaching listener.");
+            modalCloseBtn.addEventListener('click', () => {
+                console.log("Close button clicked.");
+                if (imageModal) imageModal.style.display = "none";
+                else console.error("imageModal not found on click.");
+            });
+        } else {
+            console.error("modalCloseBtn NOT found in DOM.");
+        }
         if (imageModal) imageModal.addEventListener('click', (e) => { if (e.target === imageModal) { imageModal.style.display = "none"; } });
         if (modalPrevBtn) modalPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex - 1); });
         if (modalNextBtn) modalNextBtn.addEventListener('click', (e) => { e.stopPropagation(); showImageInModal(currentModalIndex + 1); });
