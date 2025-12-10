@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const img2imgFilename = getById('img2img-filename');
     const img2imgClearBtn = getById('img2img-clear-btn');
     const img2imgDenoiseSlider = getById('img2img-denoise-slider');
-    const img2imgDenoiseValueLabel = getById('img2img-denoise-value-label');
+    const img2imgDenoiseNumber = getById('img2img-denoise-number');
     const maskFileInput = getById('mask-file-input');
     const maskUploadArea = getById('mask-upload-area');
     const maskPreviewContainer = getById('mask-preview-container');
@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const controlnetModelSelect = getById('comfy-controlnet-model');
     const controlnetPreprocessorSelect = getById('comfy-controlnet-preprocessor');
     const controlnetStrengthSlider = getById('comfy-controlnet-strength');
-    const controlnetStrengthValueLabel = getById('controlnet-strength-value-label');
+    const controlnetStrengthNumber = getById('comfy-controlnet-strength-number');
 
 
 
@@ -1047,14 +1047,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (controlnetClearBtn) controlnetClearBtn.addEventListener('click', () => resetFileUploadUI(controlnetState, 'controlnet_image', controlnetUploadArea, controlnetPreviewContainer, controlnetPreview, controlnetFilename, null, '點擊上傳參考圖', ''));
 
     function syncDenoiseValues(value) {
-        const floatValue = parseFloat(value);
-        if (comfyFormElements.denoise) comfyFormElements.denoise.value = floatValue.toFixed(2);
+        let floatValue = parseFloat(value);
+        if (isNaN(floatValue)) floatValue = 1.0;
+        // Clamp value between 0 and 1
+        floatValue = Math.min(Math.max(floatValue, 0), 1);
+
+        const strValue = floatValue.toFixed(2);
+
+        if (comfyFormElements.denoise) comfyFormElements.denoise.value = strValue;
         if (img2imgDenoiseSlider) img2imgDenoiseSlider.value = floatValue;
-        if (img2imgDenoiseValueLabel) img2imgDenoiseValueLabel.textContent = floatValue.toFixed(2);
+        if (img2imgDenoiseNumber) img2imgDenoiseNumber.value = floatValue; // Number input can handle float directly
     }
 
     if (comfyFormElements.denoise) comfyFormElements.denoise.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
     if (img2imgDenoiseSlider) img2imgDenoiseSlider.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
+    if (img2imgDenoiseNumber) img2imgDenoiseNumber.addEventListener('input', (e) => syncDenoiseValues(e.target.value));
+
+    // ControlNet 強度同步
+    function syncControlNetStrengthValues(value) {
+        let floatValue = parseFloat(value);
+        if (isNaN(floatValue)) floatValue = 1.0;
+        // Clamp value between 0 and 2 (or higher if allowed)
+        floatValue = Math.min(Math.max(floatValue, 0), 2.0);
+
+        if (controlnetStrengthSlider) controlnetStrengthSlider.value = floatValue;
+        if (controlnetStrengthNumber) controlnetStrengthNumber.value = floatValue;
+    }
+
+    if (controlnetStrengthSlider) controlnetStrengthSlider.addEventListener('input', (e) => syncControlNetStrengthValues(e.target.value));
+    if (controlnetStrengthNumber) controlnetStrengthNumber.addEventListener('input', (e) => syncControlNetStrengthValues(e.target.value));
 
     // 中文註釋：fetchAndPopulateCheckpoints函式開始
     // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
@@ -1149,7 +1170,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function fetchAndPopulateControlNetResources() {
         try {
-            const modelsResponse = await fetchWithUserContext('/api/comfyui/controlnet_models');
+            const currentModelName = comfyFormElements.model ? comfyFormElements.model.value : '';
+            const modelsResponse = await fetchWithUserContext(`/api/comfyui/controlnet_models?model_name=${encodeURIComponent(currentModelName)}`);
             if (!modelsResponse.ok) throw new Error('無法獲取 ControlNet 模型');
             const models = await modelsResponse.json();
             if (controlnetModelSelect) {
@@ -1345,6 +1367,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
+        // [v2.2] 更新 ControlNet 列表以匹配當前模型 (filtering)
+        await fetchAndPopulateControlNetResources();
     }
     // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     // 中文註釋：selectModel函式結束
@@ -3405,6 +3429,63 @@ function filterModels() {
 
     if (consultAiApplyBtn) {
         consultAiApplyBtn.addEventListener('click', applyConsultPrompt);
+    }
+
+    // --- 模型下載邏輯 (新功能 v32.0) ---
+    const downloadForm = document.getElementById('download-model-form');
+    if (downloadForm) {
+        downloadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const urlInput = document.getElementById('download-model-url');
+            const typeInput = document.getElementById('download-model-type');
+            const nameInput = document.getElementById('download-model-name');
+            const statusDiv = document.getElementById('download-status');
+            const spinner = document.getElementById('download-model-spinner');
+            const submitBtn = document.getElementById('download-model-submit-btn');
+
+            if (!urlInput.value || !nameInput.value) {
+                alert("請填寫模型網址和檔案名稱");
+                return;
+            }
+
+            // 映射前端類型到後端資料夾名稱
+            let type = typeInput.value;
+            if (type === 'checkpoint') type = 'checkpoints';
+            if (type === 'lora') type = 'loras';
+
+            spinner.style.display = 'inline-block';
+            submitBtn.disabled = true;
+            statusDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 正在請求下載...</div>';
+
+            try {
+                const response = await fetchWithUserContext('/api/comfyui/download_model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_url: urlInput.value.trim(),
+                        model_type: type,
+                        model_name: nameInput.value.trim()
+                    })
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || '請求失敗');
+
+                statusDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> 下載任務已啟動 (ID: ${result.task_id})。進度將透過系統通知顯示。</div>`;
+
+                // 5秒後重置
+                setTimeout(() => {
+                    statusDiv.innerHTML = '';
+                    submitBtn.disabled = false;
+                    spinner.style.display = 'none';
+                }, 5000);
+
+            } catch (err) {
+                statusDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-octagon"></i> 錯誤: ${err.message}</div>`;
+                submitBtn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        });
     }
 
     // Modal 開啟時重置
