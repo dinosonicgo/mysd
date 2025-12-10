@@ -3282,3 +3282,133 @@ function filterModels() {
         card.style.display = show ? 'block' : 'none';
     });
 }
+
+// =====================================================
+// [v18.0] 與 AI 商量功能
+// =====================================================
+(function () {
+    const consultAiModal = document.getElementById('consult-ai-modal');
+    const consultChatWindow = document.getElementById('consult-chat-window');
+    const consultAiInput = document.getElementById('consult-ai-input');
+    const consultAiSendBtn = document.getElementById('consult-ai-send-btn');
+    const consultAiApplyBtn = document.getElementById('consult-ai-apply-btn');
+
+    let consultChatHistory = [];
+    let lastSuggestedPrompt = '';
+
+    // 重置對話
+    function resetConsultChat() {
+        consultChatHistory = [];
+        lastSuggestedPrompt = '';
+        consultChatWindow.innerHTML = `
+            <div class="text-center text-muted">
+                <i class="bi bi-robot" style="font-size: 3rem;"></i>
+                <p>告訴 AI 您想要什麼樣的圖片，我會幫您生成提示詞！</p>
+            </div>
+        `;
+        if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'none';
+    }
+
+    // 添加訊息到對話窗口
+    function addConsultMessage(text, isUser) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message-wrapper ${isUser ? 'user-message' : 'ai-message'}`;
+        messageDiv.innerHTML = `
+            <div class="message-bubble">
+                ${text.replace(/\n/g, '<br>')}
+            </div>
+        `;
+        consultChatWindow.appendChild(messageDiv);
+        consultChatWindow.scrollTop = consultChatWindow.scrollHeight;
+    }
+
+    // 發送訊息給 AI
+    async function sendConsultMessage() {
+        const userMessage = consultAiInput.value.trim();
+        if (!userMessage) return;
+
+        // 添加用戶訊息
+        addConsultMessage(userMessage, true);
+        consultAiInput.value = '';
+        consultChatHistory.push({ role: 'user', content: userMessage });
+
+        // 顯示載入中
+        addConsultMessage('正在思考...', false);
+        const loadingMsg = consultChatWindow.lastChild;
+
+        try {
+            // 獲取當前提示詞
+            const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
+
+            const response = await fetchWithUserContext('/api/comfyui/consult-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userMessage,
+                    currentPrompt: currentPrompt
+                })
+            });
+
+            const result = await response.json();
+
+            // 移除載入訊息
+            loadingMsg.remove();
+
+            if (response.ok && result.suggested_prompt) {
+                lastSuggestedPrompt = result.suggested_prompt;
+                consultChatHistory.push({ role: 'ai', content: result.suggested_prompt });
+
+                // 添加 AI 回覆
+                addConsultMessage(`建議的提示詞：\n\n${result.suggested_prompt}`, false);
+
+                // 顯示應用按鈕
+                if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'inline-block';
+            } else {
+                throw new Error(result.detail || '無法獲取 AI 回覆');
+            }
+        } catch (error) {
+            loadingMsg.remove();
+            addConsultMessage(`抱歉，發生錯誤：${error.message}`, false);
+        }
+    }
+
+    // 應用提示詞到輸入框
+    function applyConsultPrompt() {
+        if (lastSuggestedPrompt) {
+            const promptInput = document.getElementById('comfy-positive-prompt');
+            if (promptInput) {
+                promptInput.value = lastSuggestedPrompt;
+
+                // 關閉 Modal
+                const modal = bootstrap.Modal.getInstance(consultAiModal);
+                if (modal) modal.hide();
+
+                // 顯示成功提示
+                addConsultMessage('✅ 已應用到提示詞框', false);
+            }
+        }
+    }
+
+    // 事件監聽
+    if (consultAiSendBtn) {
+        consultAiSendBtn.addEventListener('click', sendConsultMessage);
+    }
+
+    if (consultAiInput) {
+        consultAiInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendConsultMessage();
+            }
+        });
+    }
+
+    if (consultAiApplyBtn) {
+        consultAiApplyBtn.addEventListener('click', applyConsultPrompt);
+    }
+
+    // Modal 開啟時重置
+    if (consultAiModal) {
+        consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
+    }
+})();
