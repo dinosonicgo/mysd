@@ -3291,7 +3291,15 @@ function filterModels() {
             show = true;
         } else {
             show = selectedFilters.some(filter => {
-                if (filter === 'sdxl' && modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                if (filter === 'sdxl' && (
+                    modelName.includes('xl') ||
+                    modelName.includes('sdxl') ||
+                    modelName.includes('nbi') ||
+                    modelName.includes('noobai') ||
+                    modelName.includes('il') ||
+                    modelName.includes('illustrious') ||
+                    modelName.includes('protovision')
+                ) && !modelName.includes('sd3')) return true;
                 if (filter === 'sd3' && modelName.includes('sd3')) return true;
                 if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
                 if (filter === 'flux' && modelName.includes('flux')) return true;
