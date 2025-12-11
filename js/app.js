@@ -1352,10 +1352,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 自動設定推薦的 Turbo 參數，但允許使用者之後修改
             if (comfyFormElements.steps) comfyFormElements.steps.value = 10;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 2.0;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
-            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 2.0)。');
+            // [v2.2] ZIT 模型不需要負面提示詞，自動關閉
+            const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+            if (useNegativePromptCheckbox) {
+                useNegativePromptCheckbox.checked = false;
+                localStorage.setItem('comfy_use_negative_prompt', 'false');
+            }
+
+            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞已關閉。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
 
         } else {
