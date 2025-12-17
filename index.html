@@ -1606,9 +1606,16 @@
                         </div>
                         <div class="mb-3">
                             <label for="download-model-name" class="form-label">模型檔案名稱</label>
-                            <input type="text" class="form-control" id="download-model-name"
-                                placeholder="mymodel.safetensors" required>
-                            <small class="form-text text-muted">請包含副檔名，例如 .safetensors 或 .ckpt</small>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="download-model-name" placeholder="mymodel"
+                                    required>
+                                <select class="form-select" id="download-model-extension" style="max-width: 140px;">
+                                    <option value=".safetensors" selected>.safetensors</option>
+                                    <option value=".ckpt">.ckpt</option>
+                                    <option value="">自訂 (手動輸入)</option>
+                                </select>
+                            </div>
+                            <small class="form-text text-muted">選擇 「自訂」可手動輸入完整檔名（含副檔名）</small>
                         </div>
                         <div class="mb-3">
                             <label for="download-model-preview" class="form-label">預覽圖 (可選)</label>
@@ -1691,7 +1698,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1765979368"></script>
+    <script src="js/app.js?v=1765982641"></script>
 </body>
 
 </html>

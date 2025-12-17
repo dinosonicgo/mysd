@@ -2538,7 +2538,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const modelType = form.querySelector('#download-model-type').value;
         const modelUrl = form.querySelector('#download-model-url').value;
-        const modelName = form.querySelector('#download-model-name').value;
+        const modelNameInput = form.querySelector('#download-model-name').value.trim();
+        const modelExtension = form.querySelector('#download-model-extension').value;
+        // 如果使用者選擇了副檔名，則自動合併；如果選擇「自訂」(空值)，則使用原輸入值
+        const modelName = modelExtension ? (modelNameInput + modelExtension) : modelNameInput;
         const previewFile = form.querySelector('#download-model-preview').files[0];
 
         let previewImageBase64 = null;
