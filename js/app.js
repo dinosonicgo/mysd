@@ -1371,6 +1371,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.vae.value = 'model_embedded';
                 console.log('通用模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
             }
+
+            // [v2.3] SDXL 模型自動設定
+            if (newArchitecture === 'sdxl') {
+                // 1. 開啟「使用負面提示詞」
+                const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+                if (useNegativePromptCheckbox) {
+                    useNegativePromptCheckbox.checked = true;
+                    localStorage.setItem('comfy_use_negative_prompt', 'true');
+                }
+
+                // 2. 開啟「本地翻譯」
+                if (comfyFormElements.enable_local_translation) {
+                    comfyFormElements.enable_local_translation.checked = true;
+                }
+
+                console.log('SDXL 模式: 已自動開啟負面提示詞與本地翻譯。');
+            }
         }
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
