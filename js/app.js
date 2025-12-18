@@ -191,6 +191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const negativePromptSetGuroBtn = getById('negative-prompt-set-guro-btn');
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
     const fixedPromptSetDetailedBtn = getById('fixed-prompt-set-detailed-btn'); // [v1.1 新增]
+    const fixedPromptClearBtn = getById('fixed-prompt-clear-btn'); // [v2.3 新增]
 
     // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
@@ -264,7 +265,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const DEFAULT_NEGATIVE_PROMPT_GENERAL = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nbad anatomy, deformed, mutated, ugly, disfigured, long body, bad hands, missing fingers, extra digit, fewer digits, conjoined, very displeasing,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_FIXED_PROMPT = "非常美麗的眼睛，完美傑作，8K，UHD，大光圈，最高畫質";
-    const DETAILED_FIXED_PROMPT = "非常美麗的眼睛，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
+    const DETAILED_FIXED_PROMPT = "(非常美麗的臉:1.2)，(非常美麗的眼睛:1.2)，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
     // --- 預設提示詞常數 ---
 
     // 中文註釋：fetchWithUserContext函式開始
@@ -3108,6 +3109,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (fixedPromptSetDefaultBtn && comfyFormElements.fixed_prompt) {
             fixedPromptSetDefaultBtn.addEventListener('click', () => {
                 comfyFormElements.fixed_prompt.value = DEFAULT_FIXED_PROMPT;
+            });
+        }
+
+        if (fixedPromptClearBtn && comfyFormElements.fixed_prompt) {
+            fixedPromptClearBtn.addEventListener('click', () => {
+                if (confirm('確定要清空固定提示詞嗎？')) {
+                    comfyFormElements.fixed_prompt.value = '';
+                }
             });
         }
 
