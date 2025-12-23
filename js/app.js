@@ -2153,6 +2153,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (isFirstItem) {
                         const fullItemUrl = new URL(itemData.url, activeDeviceUrl).href;
+                        // [v19.1] 應使用者要求，已停用自動顯示最新圖片的預覽功能
+                        // 使用者將自行查看歷史紀錄
+                        /*
                         if (itemData.is_video) {
                             if (comfyResultImage) comfyResultImage.style.display = 'none';
                             if (comfyResultVideo) {
@@ -2167,6 +2170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 comfyResultImage.style.display = 'block';
                             }
                         }
+                        */
                         // 生成完成，進度條設為 100%
                         if (comfyProgressBar) comfyProgressBar.style.width = '100%';
                         if (comfyProgressText) comfyProgressText.textContent = '生成完成！';
