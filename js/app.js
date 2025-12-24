@@ -1370,7 +1370,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.setItem('comfy_use_negative_prompt', 'false');
             }
 
-            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞已關閉。');
+            // [v2.4] ZIT 模型通常不需要翻譯，自動關閉
+            if (comfyFormElements.enable_local_translation) {
+                comfyFormElements.enable_local_translation.checked = false;
+            }
+
+            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞與翻譯已關閉。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
 
         } else {
