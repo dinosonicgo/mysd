@@ -1282,10 +1282,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         title.className = 'model-card-title';
         title.textContent = item.name.split(/[\\/]/).pop();
 
-        card.append(imgContainer, title);
+        // [v33.0] 添加模型管理按鈕區域
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'model-card-actions';
+
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'btn btn-sm btn-outline-light';
+        renameBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+        renameBtn.title = '重命名';
+        renameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRenameModal(item.name, type === 'model' ? 'checkpoint' : 'lora');
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn btn-sm btn-outline-danger';
+        deleteBtn.innerHTML = '<i class="bi bi-trash3"></i>';
+        deleteBtn.title = '刪除';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openDeleteModal(item.name, type === 'model' ? 'checkpoint' : 'lora');
+        });
+
+        actionsDiv.appendChild(renameBtn);
+        actionsDiv.appendChild(deleteBtn);
+
+        card.append(imgContainer, title, actionsDiv);
 
         if (type === 'model') {
-            card.addEventListener('click', () => {
+            card.addEventListener('click', (e) => {
+                // 確保不是點擊管理按鈕
+                if (e.target.closest('.model-card-actions')) return;
                 if (item.architecture && item.architecture.startsWith('flux')) {
                     handleFluxModelSelection(item);
                 } else {
@@ -1303,6 +1330,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             card.appendChild(checkbox);
             card.addEventListener('click', (e) => {
+                // 確保不是點擊管理按鈕
+                if (e.target.closest('.model-card-actions')) return;
                 if (e.target !== checkbox) {
                     checkbox.checked = !checkbox.checked;
                     checkbox.dispatchEvent(new Event('change'));
@@ -1698,9 +1727,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 中文註釋：setupIntersectionObserver函式開始
     // 函式功能：設定 IntersectionObserver 以實現高效的無限滾動
-    // v3.1 (行動裝置滾動修正): [UX修復] 解決了手機版捲動到 30 張圖卡住的問題。
-    // 1. 將 rootMargin 增加到 '300px'，在接近底部前就預先載入，適應手機的慣性捲動。
-    // 2. 強制設定載入指示器 (Indicator) 的 gridColumn 為 "1 / -1"，確保它在 Grid 佈局中橫跨整行，避免因擠壓導致無法觸發偵測。
+    // v3.2 (PC/手機滾動修正): [BUG修復] 解決了 IntersectionObserver 無法正確觸發的問題。
+    // 將 root 從 comfyHistoryGrid 改為 null（視窗），因為實際滾動發生在頁面級別而非 grid 內部。
+    // 同時增大 rootMargin 到 500px 以適應 PC 和手機的不同滾動行為。
     function setupIntersectionObserver() {
         if (currentHistoryObserver) currentHistoryObserver.disconnect();
 
@@ -1723,10 +1752,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const options = {
-            root: comfyHistoryGrid,
-            // [v3.1 修正] 增大偵測緩衝區至 300px，讓手機在滑動到底部前就觸發載入
-            rootMargin: '300px',
-            threshold: 0.1
+            // [v3.2 修正] 改為 null (視窗) 因為滾動發生在頁面級別而非 grid 內部
+            root: null,
+            // [v3.2 修正] 增大偵測緩衝區至 500px，讓 PC 和手機在滑動到底部前就觸發載入
+            rootMargin: '500px',
+            threshold: 0.01
         };
 
         currentHistoryObserver = new IntersectionObserver(async (entries) => {
@@ -3586,4 +3616,189 @@ function filterModels() {
     if (consultAiModal) {
         consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
     }
+
+    // ============================================================
+    // [v33.0] 模型管理功能 - 重命名與刪除
+    // ============================================================
+
+    // --- 元素選擇器 (模型管理 Modal) ---
+    const modelRenameModalEl = getById('model-rename-modal');
+    const modelDeleteModalEl = getById('model-delete-modal');
+    let bsModelRenameModal = modelRenameModalEl ? new bootstrap.Modal(modelRenameModalEl) : null;
+    let bsModelDeleteModal = modelDeleteModalEl ? new bootstrap.Modal(modelDeleteModalEl) : null;
+
+    // 開啟重命名 Modal
+    function openRenameModal(modelName, modelType) {
+        if (!modelRenameModalEl) return;
+
+        const oldNameInput = getById('model-rename-old-name');
+        const newNameInput = getById('model-rename-new-name');
+        const typeInput = getById('model-rename-type');
+        const fullPathInput = getById('model-rename-full-path');
+        const errorDiv = getById('model-rename-error');
+
+        // 填入資料
+        const displayName = modelName.split(/[\\/]/).pop();
+        oldNameInput.value = displayName;
+        newNameInput.value = displayName;
+        typeInput.value = modelType;
+        fullPathInput.value = modelName;
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+
+        if (bsModelRenameModal) bsModelRenameModal.show();
+    }
+
+    // 開啟刪除確認 Modal
+    function openDeleteModal(modelName, modelType) {
+        if (!modelDeleteModalEl) return;
+
+        const nameDisplay = getById('model-delete-name');
+        const fullPathInput = getById('model-delete-full-path');
+        const typeInput = getById('model-delete-type');
+
+        // 填入資料
+        nameDisplay.textContent = modelName.split(/[\\/]/).pop();
+        fullPathInput.value = modelName;
+        typeInput.value = modelType;
+
+        if (bsModelDeleteModal) bsModelDeleteModal.show();
+    }
+
+    // 執行重命名 API 呼叫
+    async function executeRename() {
+        const newNameInput = getById('model-rename-new-name');
+        const typeInput = getById('model-rename-type');
+        const fullPathInput = getById('model-rename-full-path');
+        const errorDiv = getById('model-rename-error');
+        const spinner = getById('model-rename-spinner');
+        const confirmBtn = getById('model-rename-confirm-btn');
+
+        const newName = newNameInput.value.trim();
+        const oldName = fullPathInput.value;
+        const modelType = typeInput.value;
+
+        if (!newName) {
+            errorDiv.textContent = '請輸入新的檔案名稱';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        // 驗證副檔名
+        const oldExt = oldName.split('.').pop().toLowerCase();
+        const newExt = newName.split('.').pop().toLowerCase();
+        if (oldExt !== newExt) {
+            errorDiv.textContent = `副檔名必須保持為 .${oldExt}`;
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        spinner.style.display = 'inline-block';
+        confirmBtn.disabled = true;
+        errorDiv.style.display = 'none';
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/model/rename', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    old_name: oldName,
+                    new_name: newName,
+                    model_type: modelType
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || '重命名失敗');
+
+            // 關閉 Modal 並刷新列表
+            if (bsModelRenameModal) bsModelRenameModal.hide();
+
+            // 刷新對應的模型列表
+            if (modelType === 'checkpoint') {
+                await fetchAndPopulateCheckpoints();
+            } else {
+                await updateLoraListForModel(comfyFormElements.model);
+            }
+
+            console.log(`[模型管理] 成功重命名: ${oldName} -> ${result.new_name}`);
+
+        } catch (err) {
+            errorDiv.textContent = err.message;
+            errorDiv.style.display = 'block';
+        } finally {
+            spinner.style.display = 'none';
+            confirmBtn.disabled = false;
+        }
+    }
+
+    // 執行刪除 API 呼叫
+    async function executeDelete() {
+        const fullPathInput = getById('model-delete-full-path');
+        const typeInput = getById('model-delete-type');
+        const spinner = getById('model-delete-spinner');
+        const confirmBtn = getById('model-delete-confirm-btn');
+
+        const modelName = fullPathInput.value;
+        const modelType = typeInput.value;
+
+        spinner.style.display = 'inline-block';
+        confirmBtn.disabled = true;
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/model', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: modelName,
+                    model_type: modelType
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || '刪除失敗');
+
+            // 關閉 Modal 並刷新列表
+            if (bsModelDeleteModal) bsModelDeleteModal.hide();
+
+            // 刷新對應的模型列表
+            if (modelType === 'checkpoint') {
+                await fetchAndPopulateCheckpoints();
+            } else {
+                await updateLoraListForModel(comfyFormElements.model);
+            }
+
+            console.log(`[模型管理] 已將模型移至回收桶: ${modelName}`);
+
+        } catch (err) {
+            alert(`刪除失敗: ${err.message}`);
+        } finally {
+            spinner.style.display = 'none';
+            confirmBtn.disabled = false;
+        }
+    }
+
+    // 綁定重命名確認按鈕事件
+    const renameConfirmBtn = getById('model-rename-confirm-btn');
+    if (renameConfirmBtn) {
+        renameConfirmBtn.addEventListener('click', executeRename);
+    }
+
+    // 綁定刪除確認按鈕事件
+    const deleteConfirmBtn = getById('model-delete-confirm-btn');
+    if (deleteConfirmBtn) {
+        deleteConfirmBtn.addEventListener('click', executeDelete);
+    }
+
+    // 重命名輸入框 Enter 鍵提交
+    const renameNewNameInput = getById('model-rename-new-name');
+    if (renameNewNameInput) {
+        renameNewNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                executeRename();
+            }
+        });
+    }
+
 })();
