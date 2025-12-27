@@ -65,7 +65,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         adetailer_steps: getById('comfy-adetailer-steps'),
         denoise: getById('comfy-denoise'),
         vae: getById('comfy-vae-select'),
-        enable_local_translation: getById('comfy-enable-local-translation'),
+        enable_local_translation: getById('comfy-enable-local-translation'), // 保留相容性
+        // [v33.2] 新增翻譯模式 radio 選項
+        translate_llm: getById('comfy-translate-llm'),
+        translate_google: getById('comfy-translate-google'),
+        translate_none: getById('comfy-translate-none'),
     };
     // --- 元素選擇器 (ComfyUI - 參數設定) ---
     const comfySelectedModelName = getById('comfy-selected-model-name');
@@ -876,7 +880,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
             denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded',
-            enable_local_translation: comfyFormElements.enable_local_translation ? comfyFormElements.enable_local_translation.checked : true
+            // [v33.2] 翻譯模式
+            translation_mode: comfyFormElements.translate_llm?.checked ? 'llm' :
+                comfyFormElements.translate_google?.checked ? 'google' : 'none',
+            enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_google?.checked
         };
 
         // 前端持久化開關狀態
@@ -2103,7 +2110,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
             vae: comfyFormElements.vae.value,
-            enable_local_translation: comfyFormElements.enable_local_translation ? comfyFormElements.enable_local_translation.checked : true
+            // [v33.2] 翻譯模式: 'llm' | 'google' | 'none'
+            translation_mode: comfyFormElements.translate_llm?.checked ? 'llm' :
+                comfyFormElements.translate_google?.checked ? 'google' : 'none',
+            // 保留相容性
+            enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_google?.checked
         };
 
         // --- 進度條總步數預算 ---
@@ -3757,8 +3768,9 @@ function filterModels() {
         confirmBtn.disabled = true;
 
         try {
-            const response = await fetchWithUserContext('/api/comfyui/model', {
-                method: 'DELETE',
+            // [v33.1] 改用 POST 以避免跨域 DELETE request body 問題
+            const response = await fetchWithUserContext('/api/comfyui/model/delete', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: modelName,
