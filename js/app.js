@@ -3805,12 +3805,18 @@ function filterModels() {
     const renameConfirmBtn = getById('model-rename-confirm-btn');
     if (renameConfirmBtn) {
         renameConfirmBtn.addEventListener('click', executeRename);
+        console.log('[模型管理] 重命名確認按鈕事件已綁定');
+    } else {
+        console.warn('[模型管理] 找不到重命名確認按鈕 (model-rename-confirm-btn)');
     }
 
     // 綁定刪除確認按鈕事件
     const deleteConfirmBtn = getById('model-delete-confirm-btn');
     if (deleteConfirmBtn) {
         deleteConfirmBtn.addEventListener('click', executeDelete);
+        console.log('[模型管理] 刪除確認按鈕事件已綁定');
+    } else {
+        console.warn('[模型管理] 找不到刪除確認按鈕 (model-delete-confirm-btn)');
     }
 
     // 重命名輸入框 Enter 鍵提交
