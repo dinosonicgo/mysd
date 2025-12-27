@@ -259,6 +259,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentNodeTotalSteps = 0;
     let isNewNodeProgress = true;
 
+    // ============================================================
+    // [v33.0] 模型管理功能 - 變數與函式 (需在 createModelCard 前定義)
+    // ============================================================
+    let bsModelRenameModal = null;
+    let bsModelDeleteModal = null;
+
+    // 開啟重命名 Modal
+    function openRenameModal(modelName, modelType) {
+        const modelRenameModalEl = getById('model-rename-modal');
+        if (!modelRenameModalEl) return;
+
+        if (!bsModelRenameModal) {
+            bsModelRenameModal = new bootstrap.Modal(modelRenameModalEl);
+        }
+
+        const oldNameInput = getById('model-rename-old-name');
+        const newNameInput = getById('model-rename-new-name');
+        const typeInput = getById('model-rename-type');
+        const fullPathInput = getById('model-rename-full-path');
+        const errorDiv = getById('model-rename-error');
+
+        // 填入資料
+        const displayName = modelName.split(/[\\/]/).pop();
+        oldNameInput.value = displayName;
+        newNameInput.value = displayName;
+        typeInput.value = modelType;
+        fullPathInput.value = modelName;
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+
+        bsModelRenameModal.show();
+    }
+
+    // 開啟刪除確認 Modal
+    function openDeleteModal(modelName, modelType) {
+        const modelDeleteModalEl = getById('model-delete-modal');
+        if (!modelDeleteModalEl) return;
+
+        if (!bsModelDeleteModal) {
+            bsModelDeleteModal = new bootstrap.Modal(modelDeleteModalEl);
+        }
+
+        const nameDisplay = getById('model-delete-name');
+        const fullPathInput = getById('model-delete-full-path');
+        const typeInput = getById('model-delete-type');
+
+        // 填入資料
+        nameDisplay.textContent = modelName.split(/[\\/]/).pop();
+        fullPathInput.value = modelName;
+        typeInput.value = modelType;
+
+        bsModelDeleteModal.show();
+    }
+    // ============================================================
+
     let downloadWs = null;
 
     // --- 預設提示詞常數 ---
@@ -3618,52 +3673,8 @@ function filterModels() {
     }
 
     // ============================================================
-    // [v33.0] 模型管理功能 - 重命名與刪除
+    // [v33.0] 模型管理功能 - API 呼叫與事件監聽器
     // ============================================================
-
-    // --- 元素選擇器 (模型管理 Modal) ---
-    const modelRenameModalEl = getById('model-rename-modal');
-    const modelDeleteModalEl = getById('model-delete-modal');
-    let bsModelRenameModal = modelRenameModalEl ? new bootstrap.Modal(modelRenameModalEl) : null;
-    let bsModelDeleteModal = modelDeleteModalEl ? new bootstrap.Modal(modelDeleteModalEl) : null;
-
-    // 開啟重命名 Modal
-    function openRenameModal(modelName, modelType) {
-        if (!modelRenameModalEl) return;
-
-        const oldNameInput = getById('model-rename-old-name');
-        const newNameInput = getById('model-rename-new-name');
-        const typeInput = getById('model-rename-type');
-        const fullPathInput = getById('model-rename-full-path');
-        const errorDiv = getById('model-rename-error');
-
-        // 填入資料
-        const displayName = modelName.split(/[\\/]/).pop();
-        oldNameInput.value = displayName;
-        newNameInput.value = displayName;
-        typeInput.value = modelType;
-        fullPathInput.value = modelName;
-        errorDiv.style.display = 'none';
-        errorDiv.textContent = '';
-
-        if (bsModelRenameModal) bsModelRenameModal.show();
-    }
-
-    // 開啟刪除確認 Modal
-    function openDeleteModal(modelName, modelType) {
-        if (!modelDeleteModalEl) return;
-
-        const nameDisplay = getById('model-delete-name');
-        const fullPathInput = getById('model-delete-full-path');
-        const typeInput = getById('model-delete-type');
-
-        // 填入資料
-        nameDisplay.textContent = modelName.split(/[\\/]/).pop();
-        fullPathInput.value = modelName;
-        typeInput.value = modelType;
-
-        if (bsModelDeleteModal) bsModelDeleteModal.show();
-    }
 
     // 執行重命名 API 呼叫
     async function executeRename() {
