@@ -3689,12 +3689,12 @@ function filterModels() {
 
     // 執行重命名 API 呼叫
     async function executeRename() {
-        const newNameInput = getById('model-rename-new-name');
-        const typeInput = getById('model-rename-type');
-        const fullPathInput = getById('model-rename-full-path');
-        const errorDiv = getById('model-rename-error');
-        const spinner = getById('model-rename-spinner');
-        const confirmBtn = getById('model-rename-confirm-btn');
+        const newNameInput = document.getElementById('model-rename-new-name');
+        const typeInput = document.getElementById('model-rename-type');
+        const fullPathInput = document.getElementById('model-rename-full-path');
+        const errorDiv = document.getElementById('model-rename-error');
+        const spinner = document.getElementById('model-rename-spinner');
+        const confirmBtn = document.getElementById('model-rename-confirm-btn');
 
         const newName = newNameInput.value.trim();
         const oldName = fullPathInput.value;
@@ -3758,10 +3758,10 @@ function filterModels() {
     async function executeDelete() {
         console.log('[模型管理] executeDelete 函式被呼叫');
 
-        const fullPathInput = getById('model-delete-full-path');
-        const typeInput = getById('model-delete-type');
-        const spinner = getById('model-delete-spinner');
-        const confirmBtn = getById('model-delete-confirm-btn');
+        const fullPathInput = document.getElementById('model-delete-full-path');
+        const typeInput = document.getElementById('model-delete-type');
+        const spinner = document.getElementById('model-delete-spinner');
+        const confirmBtn = document.getElementById('model-delete-confirm-btn');
 
         // 除錯：檢查元素是否存在
         if (!fullPathInput || !typeInput) {
