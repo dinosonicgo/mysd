@@ -3756,16 +3756,27 @@ function filterModels() {
 
     // 執行刪除 API 呼叫
     async function executeDelete() {
+        console.log('[模型管理] executeDelete 函式被呼叫');
+
         const fullPathInput = getById('model-delete-full-path');
         const typeInput = getById('model-delete-type');
         const spinner = getById('model-delete-spinner');
         const confirmBtn = getById('model-delete-confirm-btn');
 
+        // 除錯：檢查元素是否存在
+        if (!fullPathInput || !typeInput) {
+            console.error('[模型管理] 錯誤：找不到必要的表單元素', { fullPathInput, typeInput });
+            alert('系統錯誤：找不到必要的表單元素');
+            return;
+        }
+
         const modelName = fullPathInput.value;
         const modelType = typeInput.value;
 
-        spinner.style.display = 'inline-block';
-        confirmBtn.disabled = true;
+        console.log('[模型管理] 準備刪除模型:', { modelName, modelType });
+
+        if (spinner) spinner.style.display = 'inline-block';
+        if (confirmBtn) confirmBtn.disabled = true;
 
         try {
             // [v33.1] 改用 POST 以避免跨域 DELETE request body 問題
