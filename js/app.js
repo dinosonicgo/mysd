@@ -316,6 +316,131 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         bsModelDeleteModal.show();
     }
+
+    // 執行重命名 API 呼叫
+    async function executeRename() {
+        const newNameInput = getById('model-rename-new-name');
+        const typeInput = getById('model-rename-type');
+        const fullPathInput = getById('model-rename-full-path');
+        const errorDiv = getById('model-rename-error');
+        const spinner = getById('model-rename-spinner');
+        const confirmBtn = getById('model-rename-confirm-btn');
+
+        const newName = newNameInput.value.trim();
+        const oldName = fullPathInput.value;
+        const modelType = typeInput.value;
+
+        if (!newName) {
+            errorDiv.textContent = '請輸入新的檔案名稱';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        // 驗證副檔名
+        const oldExt = oldName.split('.').pop().toLowerCase();
+        const newExt = newName.split('.').pop().toLowerCase();
+        if (oldExt !== newExt) {
+            errorDiv.textContent = `副檔名必須保持為 .${oldExt}`;
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        spinner.style.display = 'inline-block';
+        confirmBtn.disabled = true;
+        errorDiv.style.display = 'none';
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/model/rename', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    old_name: oldName,
+                    new_name: newName,
+                    model_type: modelType
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || '重命名失敗');
+
+            // 關閉 Modal 並刷新列表
+            if (bsModelRenameModal) bsModelRenameModal.hide();
+
+            // 刷新對應的模型列表
+            if (modelType === 'checkpoint') {
+                await fetchAndPopulateCheckpoints();
+            } else {
+                await updateLoraListForModel(comfyFormElements.model);
+            }
+
+            console.log(`[模型管理] 成功重命名: ${oldName} -> ${result.new_name}`);
+
+        } catch (err) {
+            errorDiv.textContent = err.message;
+            errorDiv.style.display = 'block';
+        } finally {
+            spinner.style.display = 'none';
+            confirmBtn.disabled = false;
+        }
+    }
+
+    // 執行刪除 API 呼叫
+    async function executeDelete() {
+        console.log('[模型管理] executeDelete 函式被呼叫');
+
+        const fullPathInput = getById('model-delete-full-path');
+        const typeInput = getById('model-delete-type');
+        const spinner = getById('model-delete-spinner');
+        const confirmBtn = getById('model-delete-confirm-btn');
+
+        // 除錯：檢查元素是否存在
+        if (!fullPathInput || !typeInput) {
+            console.error('[模型管理] 錯誤：找不到必要的表單元素', { fullPathInput, typeInput });
+            alert('系統錯誤：找不到必要的表單元素');
+            return;
+        }
+
+        const modelName = fullPathInput.value;
+        const modelType = typeInput.value;
+
+        console.log('[模型管理] 準備刪除模型:', { modelName, modelType });
+
+        if (spinner) spinner.style.display = 'inline-block';
+        if (confirmBtn) confirmBtn.disabled = true;
+
+        try {
+            // [v33.1] 改用 POST 以避免跨域 DELETE request body 問題
+            const response = await fetchWithUserContext('/api/comfyui/model/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: modelName,
+                    model_type: modelType
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || '刪除失敗');
+
+            // 關閉 Modal 並刷新列表
+            if (bsModelDeleteModal) bsModelDeleteModal.hide();
+
+            // 刷新對應的模型列表
+            if (modelType === 'checkpoint') {
+                await fetchAndPopulateCheckpoints();
+            } else {
+                await updateLoraListForModel(comfyFormElements.model);
+            }
+
+            console.log(`[模型管理] 模型已刪除: ${modelName}`);
+
+        } catch (err) {
+            alert(`刪除失敗: ${err.message}`);
+        } finally {
+            if (spinner) spinner.style.display = 'none';
+            if (confirmBtn) confirmBtn.disabled = false;
+        }
+    }
     // ============================================================
 
     let downloadWs = null;
@@ -3419,6 +3544,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (inpaintSaveMaskBtn) {
             inpaintSaveMaskBtn.addEventListener('click', generateMaskAndUpload);
         }
+
+        // ============================================================
+        // [v33.1] 模型管理事件綁定
+        // ============================================================
+        const renameConfirmBtn = getById('model-rename-confirm-btn');
+        if (renameConfirmBtn) {
+            renameConfirmBtn.addEventListener('click', executeRename);
+            console.log('[模型管理] 重命名確認按鈕事件已綁定');
+        }
+
+        const deleteConfirmBtn = getById('model-delete-confirm-btn');
+        if (deleteConfirmBtn) {
+            deleteConfirmBtn.addEventListener('click', executeDelete);
+            console.log('[模型管理] 刪除確認按鈕事件已綁定');
+        }
+
+        const renameNewNameInput = getById('model-rename-new-name');
+        if (renameNewNameInput) {
+            renameNewNameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    executeRename();
+                }
+            });
+        }
+        // ============================================================
     }
     // 函式功能：應用程式的主初始化函式
     // 中文註釋：initialize函式結束
@@ -3678,167 +3829,9 @@ function filterModels() {
         });
     }
 
+
     // Modal 開啟時重置
     if (consultAiModal) {
         consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
-    }
-
-    // ============================================================
-    // [v33.0] 模型管理功能 - API 呼叫與事件監聽器
-    // ============================================================
-
-    // 執行重命名 API 呼叫
-    async function executeRename() {
-        const newNameInput = document.getElementById('model-rename-new-name');
-        const typeInput = document.getElementById('model-rename-type');
-        const fullPathInput = document.getElementById('model-rename-full-path');
-        const errorDiv = document.getElementById('model-rename-error');
-        const spinner = document.getElementById('model-rename-spinner');
-        const confirmBtn = document.getElementById('model-rename-confirm-btn');
-
-        const newName = newNameInput.value.trim();
-        const oldName = fullPathInput.value;
-        const modelType = typeInput.value;
-
-        if (!newName) {
-            errorDiv.textContent = '請輸入新的檔案名稱';
-            errorDiv.style.display = 'block';
-            return;
-        }
-
-        // 驗證副檔名
-        const oldExt = oldName.split('.').pop().toLowerCase();
-        const newExt = newName.split('.').pop().toLowerCase();
-        if (oldExt !== newExt) {
-            errorDiv.textContent = `副檔名必須保持為 .${oldExt}`;
-            errorDiv.style.display = 'block';
-            return;
-        }
-
-        spinner.style.display = 'inline-block';
-        confirmBtn.disabled = true;
-        errorDiv.style.display = 'none';
-
-        try {
-            const response = await fetchWithUserContext('/api/comfyui/model/rename', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    old_name: oldName,
-                    new_name: newName,
-                    model_type: modelType
-                })
-            });
-
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.detail || '重命名失敗');
-
-            // 關閉 Modal 並刷新列表
-            if (bsModelRenameModal) bsModelRenameModal.hide();
-
-            // 刷新對應的模型列表
-            if (modelType === 'checkpoint') {
-                await fetchAndPopulateCheckpoints();
-            } else {
-                await updateLoraListForModel(comfyFormElements.model);
-            }
-
-            console.log(`[模型管理] 成功重命名: ${oldName} -> ${result.new_name}`);
-
-        } catch (err) {
-            errorDiv.textContent = err.message;
-            errorDiv.style.display = 'block';
-        } finally {
-            spinner.style.display = 'none';
-            confirmBtn.disabled = false;
-        }
-    }
-
-    // 執行刪除 API 呼叫
-    async function executeDelete() {
-        console.log('[模型管理] executeDelete 函式被呼叫');
-
-        const fullPathInput = document.getElementById('model-delete-full-path');
-        const typeInput = document.getElementById('model-delete-type');
-        const spinner = document.getElementById('model-delete-spinner');
-        const confirmBtn = document.getElementById('model-delete-confirm-btn');
-
-        // 除錯：檢查元素是否存在
-        if (!fullPathInput || !typeInput) {
-            console.error('[模型管理] 錯誤：找不到必要的表單元素', { fullPathInput, typeInput });
-            alert('系統錯誤：找不到必要的表單元素');
-            return;
-        }
-
-        const modelName = fullPathInput.value;
-        const modelType = typeInput.value;
-
-        console.log('[模型管理] 準備刪除模型:', { modelName, modelType });
-
-        if (spinner) spinner.style.display = 'inline-block';
-        if (confirmBtn) confirmBtn.disabled = true;
-
-        try {
-            // [v33.1] 改用 POST 以避免跨域 DELETE request body 問題
-            const response = await fetchWithUserContext('/api/comfyui/model/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: modelName,
-                    model_type: modelType
-                })
-            });
-
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.detail || '刪除失敗');
-
-            // 關閉 Modal 並刷新列表
-            if (bsModelDeleteModal) bsModelDeleteModal.hide();
-
-            // 刷新對應的模型列表
-            if (modelType === 'checkpoint') {
-                await fetchAndPopulateCheckpoints();
-            } else {
-                await updateLoraListForModel(comfyFormElements.model);
-            }
-
-            console.log(`[模型管理] 已將模型移至回收桶: ${modelName}`);
-
-        } catch (err) {
-            alert(`刪除失敗: ${err.message}`);
-        } finally {
-            spinner.style.display = 'none';
-            confirmBtn.disabled = false;
-        }
-    }
-
-    // [v33.1] 模型管理事件綁定 - 在 IIFE 內使用 document.getElementById
-    // 綁定重命名確認按鈕事件
-    const renameConfirmBtn = document.getElementById('model-rename-confirm-btn');
-    if (renameConfirmBtn) {
-        renameConfirmBtn.addEventListener('click', executeRename);
-        console.log('[模型管理] 重命名確認按鈕事件已綁定');
-    } else {
-        console.warn('[模型管理] 找不到重命名確認按鈕 (model-rename-confirm-btn)');
-    }
-
-    // 綁定刪除確認按鈕事件
-    const deleteConfirmBtn = document.getElementById('model-delete-confirm-btn');
-    if (deleteConfirmBtn) {
-        deleteConfirmBtn.addEventListener('click', executeDelete);
-        console.log('[模型管理] 刪除確認按鈕事件已綁定');
-    } else {
-        console.warn('[模型管理] 找不到刪除確認按鈕 (model-delete-confirm-btn)');
-    }
-
-    // 重命名輸入框 Enter 鍵提交
-    const renameNewNameInput = document.getElementById('model-rename-new-name');
-    if (renameNewNameInput) {
-        renameNewNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                executeRename();
-            }
-        });
     }
 })();
