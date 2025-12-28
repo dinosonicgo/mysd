@@ -3812,8 +3812,9 @@ function filterModels() {
         }
     }
 
+    // [v33.1] 模型管理事件綁定 - 在 IIFE 內使用 document.getElementById
     // 綁定重命名確認按鈕事件
-    const renameConfirmBtn = getById('model-rename-confirm-btn');
+    const renameConfirmBtn = document.getElementById('model-rename-confirm-btn');
     if (renameConfirmBtn) {
         renameConfirmBtn.addEventListener('click', executeRename);
         console.log('[模型管理] 重命名確認按鈕事件已綁定');
@@ -3822,7 +3823,7 @@ function filterModels() {
     }
 
     // 綁定刪除確認按鈕事件
-    const deleteConfirmBtn = getById('model-delete-confirm-btn');
+    const deleteConfirmBtn = document.getElementById('model-delete-confirm-btn');
     if (deleteConfirmBtn) {
         deleteConfirmBtn.addEventListener('click', executeDelete);
         console.log('[模型管理] 刪除確認按鈕事件已綁定');
@@ -3831,7 +3832,7 @@ function filterModels() {
     }
 
     // 重命名輸入框 Enter 鍵提交
-    const renameNewNameInput = getById('model-rename-new-name');
+    const renameNewNameInput = document.getElementById('model-rename-new-name');
     if (renameNewNameInput) {
         renameNewNameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -3840,5 +3841,4 @@ function filterModels() {
             }
         });
     }
-
 })();
