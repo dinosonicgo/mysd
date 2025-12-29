@@ -1586,8 +1586,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.setItem('comfy_use_negative_prompt', 'false');
             }
 
-            // [v2.4] ZIT 模型通常不需要翻譯，自動關閉
-            if (comfyFormElements.enable_local_translation) {
+            // [v2.4] ZIT 模型通常不需要翻譯，自動選擇「不翻譯」
+            if (comfyFormElements.translate_none) {
+                comfyFormElements.translate_none.checked = true;
+            } else if (comfyFormElements.enable_local_translation) {
+                // 舊版相容性
                 comfyFormElements.enable_local_translation.checked = false;
             }
 
