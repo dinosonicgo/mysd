@@ -1586,15 +1586,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.setItem('comfy_use_negative_prompt', 'false');
             }
 
-            // [v2.4] ZIT 模型通常不需要翻譯，自動選擇「不翻譯」
-            if (comfyFormElements.translate_none) {
-                comfyFormElements.translate_none.checked = true;
-            } else if (comfyFormElements.enable_local_translation) {
-                // 舊版相容性
-                comfyFormElements.enable_local_translation.checked = false;
-            }
 
-            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞與翻譯已關閉。');
+
+            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞已關閉。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
 
         } else {
@@ -1613,13 +1607,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                     localStorage.setItem('comfy_use_negative_prompt', 'true');
                 }
 
-                // 2. 開啟「本地翻譯」
-                if (comfyFormElements.enable_local_translation) {
-                    comfyFormElements.enable_local_translation.checked = true;
-                }
-
-                console.log('SDXL 模式: 已自動開啟負面提示詞與本地翻譯。');
+                console.log('SDXL 模式: 已自動開啟負面提示詞。');
             }
+        }
+
+        // [v33.3] 強制所有模型預設使用 Gemma 翻譯 (使用者要求)
+        if (comfyFormElements.translate_llm) {
+            comfyFormElements.translate_llm.checked = true;
+            if (comfyFormElements.translate_google) comfyFormElements.translate_google.checked = false;
+            if (comfyFormElements.translate_none) comfyFormElements.translate_none.checked = false;
+            // 舊版相容
+            if (comfyFormElements.enable_local_translation) comfyFormElements.enable_local_translation.checked = true;
+            console.log('翻譯模式已預設重置為 Gemma (LLM)。');
         }
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
