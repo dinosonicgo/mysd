@@ -470,13 +470,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 函式功能：使用使用者上下文標頭發起 fetch 請求，並允許覆寫基礎 URL
     // 中文註釋：fetchWithUserContext函式結束
 
-    // [v18.7 修正] 暴露 fetchWithUserContext 到全域供 Consult AI IIFE 使用
-    window.fetchWithUserContext = fetchWithUserContext;
-    // 暴露 activeDeviceUrl 的存取器
-    Object.defineProperty(window, 'activeDeviceUrl', {
-        get: function () { return activeDeviceUrl; }
-    });
-
     // 中文註釋：checkDeviceStatus函式開始
     // 函式功能：即時檢測指定裝置的在線狀態
     // v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
@@ -3697,8 +3690,7 @@ function filterModels() {
             // 獲取當前提示詞
             const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
 
-            // [v18.7 修正] 使用 window.fetchWithUserContext 確保遠端訪問時請求發送到正確的後端
-            const response = await window.fetchWithUserContext('/api/comfyui/consult-ai', {
+            const response = await fetch('/api/comfyui/consult-ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
