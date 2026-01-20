@@ -462,6 +462,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             throw new Error("沒有可用的裝置 URL。請確保已選擇一個在線裝置。");
         }
         const fullUrl = new URL(path, urlSource).href;
+        console.log('[FetchDebug] API Request:', path, '->', fullUrl, 'using source:', urlSource);
         const headers = new Headers(options.headers || {});
         headers.append('X-User-Type', userContext.user_type);
         options.headers = headers;
@@ -3644,7 +3645,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 獲取當前提示詞
             const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
 
+            // [v18.7 Fix] 檢測是否誤連到靜態主機 (GitHub Pages)
+            if (activeDeviceUrl.includes('github.io') || activeDeviceUrl.includes('dinosonicgo.github.io')) {
+                throw new Error("尚未連接到後端伺服器。請在左上角「切換裝置」選擇您的 PC。");
+            }
+
             // [v18.7 Fix] 直接使用 fetchWithUserContext (在同一作用域內)
+            console.log('[ConsultDebug] Sending request. ActiveDeviceUrl:', activeDeviceUrl);
             const response = await fetchWithUserContext('/api/comfyui/consult-ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
