@@ -3690,7 +3690,8 @@ function filterModels() {
             // 獲取當前提示詞
             const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
 
-            const response = await fetch('/api/comfyui/consult-ai', {
+            // [v18.6 修正] 使用 fetchWithUserContext 確保遠端訪問時請求發送到正確的後端伺服器
+            const response = await fetchWithUserContext('/api/comfyui/consult-ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
