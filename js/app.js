@@ -3582,61 +3582,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('初始化過程中發生錯誤:', error);
     }
-});
 
-function isQwenModel(modelName) {
-    return modelName.toLowerCase().includes('qwen') || modelName.toLowerCase().includes('diffusion_models/qwen');
-}
-
-function filterModels() {
-    const modelSelectionGrid = document.getElementById('model-selection-grid');
-    if (!modelSelectionGrid) return;
-
-    const noFilterCheckbox = document.getElementById('model-no-filter-checkbox');
-    if (noFilterCheckbox && noFilterCheckbox.checked) {
-        const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
-        modelCards.forEach(card => card.style.display = 'block');
-        return;
-    }
-
-    const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
-    const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
-
-    modelCards.forEach(card => {
-        const modelName = card.dataset.itemName.toLowerCase();
-        let show = false;
-        if (selectedFilters.length === 0) {
-            show = true;
-        } else {
-            show = selectedFilters.some(filter => {
-                if (filter === 'sdxl' && (
-                    modelName.includes('xl') ||
-                    modelName.includes('sdxl') ||
-                    modelName.includes('nbi') ||
-                    modelName.includes('noobai') ||
-                    modelName.includes('il') ||
-                    modelName.includes('illustrious') ||
-                    modelName.includes('protovision')
-                ) && !modelName.includes('sd3')) return true;
-                if (filter === 'sd3' && modelName.includes('sd3')) return true;
-                if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
-                if (filter === 'flux' && modelName.includes('flux')) return true;
-                if (filter === 'sdxl' && modelName.includes('pony')) return true;
-                if (filter === 'qwen' && modelName.includes('qwen')) return true;
-                // [v18.18] ZIT 篩選支援 (如果有的話，這通常歸類在 SDXL 或需要新的標籤)
-                // 暫時讓 ZIT 在預設情況下顯示，或如果它包含 zit 關鍵字
-                if (modelName.includes('zit')) return true;
-                return false;
-            });
-        }
-        card.style.display = show ? 'block' : 'none';
-    });
-}
-
-// =====================================================
-// [v18.0] 與 AI 商量功能
-// =====================================================
-(function () {
+    // =====================================================
+    // [v18.0] 與 AI 商量功能 (Moved to main scope)
+    // =====================================================
+    // (function () { // Removed IIFE wrapper
     const consultAiModal = document.getElementById('consult-ai-modal');
     const consultChatWindow = document.getElementById('consult-chat-window');
     const consultAiInput = document.getElementById('consult-ai-input');
@@ -3650,17 +3600,20 @@ function filterModels() {
     function resetConsultChat() {
         consultChatHistory = [];
         lastSuggestedPrompt = '';
-        consultChatWindow.innerHTML = `
+        if (consultChatWindow) {
+            consultChatWindow.innerHTML = `
             <div class="text-center text-muted">
                 <i class="bi bi-robot" style="font-size: 3rem;"></i>
                 <p>告訴 AI 您想要什麼樣的圖片，我會幫您生成提示詞！</p>
             </div>
         `;
+        }
         if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'none';
     }
 
     // 添加訊息到對話窗口
     function addConsultMessage(text, isUser) {
+        if (!consultChatWindow) return;
         const messageDiv = document.createElement('div');
         messageDiv.className = `chat-message-wrapper ${isUser ? 'user-message' : 'ai-message'}`;
         messageDiv.innerHTML = `
@@ -3674,6 +3627,7 @@ function filterModels() {
 
     // 發送訊息給 AI
     async function sendConsultMessage() {
+        if (!consultAiInput) return;
         const userMessage = consultAiInput.value.trim();
         if (!userMessage) return;
 
@@ -3690,7 +3644,8 @@ function filterModels() {
             // 獲取當前提示詞
             const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
 
-            const response = await fetch('/api/comfyui/consult-ai', {
+            // [v18.7 Fix] 直接使用 fetchWithUserContext (在同一作用域內)
+            const response = await fetchWithUserContext('/api/comfyui/consult-ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3702,7 +3657,7 @@ function filterModels() {
             const result = await response.json();
 
             // 移除載入訊息
-            loadingMsg.remove();
+            if (loadingMsg) loadingMsg.remove();
 
             if (response.ok && result.suggested_prompt) {
                 lastSuggestedPrompt = result.suggested_prompt;
@@ -3717,7 +3672,7 @@ function filterModels() {
                 throw new Error(result.detail || '無法獲取 AI 回覆');
             }
         } catch (error) {
-            loadingMsg.remove();
+            if (loadingMsg) loadingMsg.remove();
             addConsultMessage(`抱歉，發生錯誤：${error.message}`, false);
         }
     }
@@ -3836,4 +3791,54 @@ function filterModels() {
     if (consultAiModal) {
         consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
     }
-})();
+    // })(); // End of moved logic
+});
+
+function isQwenModel(modelName) {
+    return modelName.toLowerCase().includes('qwen') || modelName.toLowerCase().includes('diffusion_models/qwen');
+}
+
+function filterModels() {
+    const modelSelectionGrid = document.getElementById('model-selection-grid');
+    if (!modelSelectionGrid) return;
+
+    const noFilterCheckbox = document.getElementById('model-no-filter-checkbox');
+    if (noFilterCheckbox && noFilterCheckbox.checked) {
+        const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
+        modelCards.forEach(card => card.style.display = 'block');
+        return;
+    }
+
+    const selectedFilters = Array.from(document.querySelectorAll('.model-filter-checkbox:checked')).map(cb => cb.value);
+    const modelCards = modelSelectionGrid.querySelectorAll('.model-card');
+
+    modelCards.forEach(card => {
+        const modelName = card.dataset.itemName.toLowerCase();
+        let show = false;
+        if (selectedFilters.length === 0) {
+            show = true;
+        } else {
+            show = selectedFilters.some(filter => {
+                if (filter === 'sdxl' && (
+                    modelName.includes('xl') ||
+                    modelName.includes('sdxl') ||
+                    modelName.includes('nbi') ||
+                    modelName.includes('noobai') ||
+                    modelName.includes('il') ||
+                    modelName.includes('illustrious') ||
+                    modelName.includes('protovision')
+                ) && !modelName.includes('sd3')) return true;
+                if (filter === 'sd3' && modelName.includes('sd3')) return true;
+                if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
+                if (filter === 'flux' && modelName.includes('flux')) return true;
+                if (filter === 'sdxl' && modelName.includes('pony')) return true;
+                if (filter === 'qwen' && modelName.includes('qwen')) return true;
+                // [v18.18] ZIT 篩選支援 (如果有的話，這通常歸類在 SDXL 或需要新的標籤)
+                // 暫時讓 ZIT 在預設情況下顯示，或如果它包含 zit 關鍵字
+                if (modelName.includes('zit')) return true;
+                return false;
+            });
+        }
+        card.style.display = show ? 'block' : 'none';
+    });
+}
