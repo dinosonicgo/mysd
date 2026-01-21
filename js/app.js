@@ -811,6 +811,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function checkChatServiceStatus() {
+        // [v3.0 修正] Chat 服務已移除，直接設為離線以避免 405 錯誤
+        updateChatUI(false);
+        /*
         try {
             const response = await fetchWithUserContext('/api/system/chat_service_status');
             const data = await response.json();
@@ -825,6 +828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateChatUI(false);
             chatStartupStatus.textContent = '錯誤: 無法連接到主伺服器。';
         }
+        */
     }
 
     async function startChatService() {
