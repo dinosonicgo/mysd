@@ -1599,7 +1599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // [v2.3] SDXL 模型自動設定
-            if (newArchitecture === 'sdxl') {
+            if (newArchitecture === 'sdxl' || newArchitecture === 'pony') {
                 // 1. 開啟「使用負面提示詞」
                 const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
                 if (useNegativePromptCheckbox) {
@@ -1607,7 +1607,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     localStorage.setItem('comfy_use_negative_prompt', 'true');
                 }
 
-                console.log('SDXL 模式: 已自動開啟負面提示詞。');
+                // [v2.4] 新增: SDXL/Pony 系列預設參數
+                if (comfyFormElements.steps) comfyFormElements.steps.value = 50;
+                if (comfyFormElements.cfg) comfyFormElements.cfg.value = 6.0;
+
+                console.log('SDXL/Pony 模式: 已自動開啟負面提示詞，並設定 Steps=50, CFG=6.0');
             }
         }
 
@@ -3576,6 +3580,220 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 函式功能：應用程式的主初始化函式
     // 中文註釋：initialize函式結束
 
+    // =====================================================
+    // [v18.0] 與 AI 商量功能 (已修正範圍與 fetching)
+    // =====================================================
+    {
+        const consultAiModal = document.getElementById('consult-ai-modal');
+        const consultChatWindow = document.getElementById('consult-chat-window');
+        const consultAiInput = document.getElementById('consult-ai-input');
+        const consultAiSendBtn = document.getElementById('consult-ai-send-btn');
+        const consultAiApplyBtn = document.getElementById('consult-ai-apply-btn');
+
+        let consultChatHistory = [];
+        let lastSuggestedPrompt = '';
+
+        // 重置對話
+        function resetConsultChat() {
+            consultChatHistory = [];
+            lastSuggestedPrompt = '';
+            if (consultChatWindow) {
+                consultChatWindow.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-robot" style="font-size: 3rem;"></i>
+                    <p>告訴 AI 您想要什麼樣的圖片，我會幫您生成提示詞！</p>
+                </div>
+            `;
+            }
+            if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'none';
+        }
+
+        // 添加訊息到對話窗口
+        function addConsultMessage(text, isUser) {
+            if (!consultChatWindow) return;
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message-wrapper ${isUser ? 'user-message' : 'ai-message'}`;
+            messageDiv.innerHTML = `
+                <div class="message-bubble">
+                    ${text.replace(/\n/g, '<br>')}
+                </div>
+            `;
+            consultChatWindow.appendChild(messageDiv);
+            consultChatWindow.scrollTop = consultChatWindow.scrollHeight;
+        }
+
+        // 發送訊息給 AI
+        async function sendConsultMessage() {
+            if (!consultAiInput) return;
+            const userMessage = consultAiInput.value.trim();
+            if (!userMessage) return;
+
+            // 添加用戶訊息
+            addConsultMessage(userMessage, true);
+            consultAiInput.value = '';
+            consultChatHistory.push({ role: 'user', content: userMessage });
+
+            // 顯示載入中
+            addConsultMessage('正在思考...', false);
+            const loadingMsg = consultChatWindow ? consultChatWindow.lastChild : null;
+
+            try {
+                // 獲取當前提示詞
+                const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
+
+                // [Fix] 使用 fetchWithUserContext 以確保遠端連線正確
+                const response = await fetchWithUserContext('/api/comfyui/consult-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: userMessage,
+                        currentPrompt: currentPrompt
+                    })
+                });
+
+                const result = await response.json();
+
+                // 移除載入訊息
+                if (loadingMsg) loadingMsg.remove();
+
+                if (response.ok && result.suggested_prompt) {
+                    lastSuggestedPrompt = result.suggested_prompt;
+                    consultChatHistory.push({ role: 'ai', content: result.suggested_prompt });
+
+                    // 添加 AI 回覆
+                    addConsultMessage(`建議的提示詞：\n\n${result.suggested_prompt}`, false);
+
+                    // 顯示應用按鈕
+                    if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'inline-block';
+                } else {
+                    throw new Error(result.detail || '無法獲取 AI 回覆');
+                }
+            } catch (error) {
+                if (loadingMsg) loadingMsg.remove();
+                addConsultMessage(`抱歉，發生錯誤：${error.message}`, false);
+            }
+        }
+
+        // 應用提示詞到輸入框
+        function applyConsultPrompt() {
+            if (lastSuggestedPrompt) {
+                const promptInput = document.getElementById('comfy-positive-prompt');
+                if (promptInput) {
+                    promptInput.value = lastSuggestedPrompt;
+
+                    // 關閉 Modal
+                    if (consultAiModal) {
+                        const modal = bootstrap.Modal.getInstance(consultAiModal);
+                        if (modal) modal.hide();
+                    }
+
+                    // 顯示成功提示
+                    addConsultMessage('✅ 已應用到提示詞框', false);
+                }
+            }
+        }
+
+        // 事件監聽
+        if (consultAiSendBtn) {
+            consultAiSendBtn.addEventListener('click', sendConsultMessage);
+        }
+
+        if (consultAiInput) {
+            consultAiInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendConsultMessage();
+                }
+            });
+        }
+
+        if (consultAiApplyBtn) {
+            consultAiApplyBtn.addEventListener('click', applyConsultPrompt);
+        }
+
+        // --- 模型下載邏輯 (新功能 v32.0) ---
+        const downloadForm = document.getElementById('download-model-form');
+
+        // [v1.5] No Filter 監聽器
+        const modelNoFilterCheckbox = document.getElementById('model-no-filter-checkbox');
+        if (modelNoFilterCheckbox) {
+            modelNoFilterCheckbox.addEventListener('change', async () => {
+                if (typeof fetchAndPopulateCheckpoints === 'function') {
+                    await fetchAndPopulateCheckpoints();
+                }
+            });
+        }
+
+        const loraNoFilterCheckbox = document.getElementById('lora-no-filter-checkbox');
+        if (loraNoFilterCheckbox) {
+            loraNoFilterCheckbox.addEventListener('change', async () => {
+                if (comfyFormElements && comfyFormElements.model && typeof updateLoraListForModel === 'function') {
+                    await updateLoraListForModel(comfyFormElements.model);
+                }
+            });
+        }
+        if (downloadForm) {
+            downloadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const urlInput = document.getElementById('download-model-url');
+                const typeInput = document.getElementById('download-model-type');
+                const nameInput = document.getElementById('download-model-name');
+                const statusDiv = document.getElementById('download-status');
+                const spinner = document.getElementById('download-model-spinner');
+                const submitBtn = document.getElementById('download-model-submit-btn');
+
+                if (!urlInput.value || !nameInput.value) {
+                    alert("請填寫模型網址和檔案名稱");
+                    return;
+                }
+
+                // 映射前端類型到後端資料夾名稱
+                let type = typeInput.value;
+                if (type === 'checkpoint') type = 'checkpoints';
+                if (type === 'lora') type = 'loras';
+
+                if (spinner) spinner.style.display = 'inline-block';
+                if (submitBtn) submitBtn.disabled = true;
+                if (statusDiv) statusDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 正在請求下載...</div>';
+
+                try {
+                    const response = await fetchWithUserContext('/api/comfyui/download_model', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model_url: urlInput.value.trim(),
+                            model_type: type,
+                            model_name: nameInput.value.trim()
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.detail || '請求失敗');
+
+                    if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> 下載任務已啟動 (ID: ${result.task_id})。進度將透過系統通知顯示。</div>`;
+
+                    // 5秒後重置
+                    setTimeout(() => {
+                        if (statusDiv) statusDiv.innerHTML = '';
+                        if (submitBtn) submitBtn.disabled = false;
+                        if (spinner) spinner.style.display = 'none';
+                    }, 5000);
+
+                } catch (err) {
+                    if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-octagon"></i> 錯誤: ${err.message}</div>`;
+                    if (submitBtn) submitBtn.disabled = false;
+                    if (spinner) spinner.style.display = 'none';
+                }
+            });
+        }
+
+
+        // Modal 開啟時重置
+        if (consultAiModal) {
+            consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
+        }
+    }
+
     try {
         await initialize();
         console.log('初始化完成');
@@ -3632,208 +3850,3 @@ function filterModels() {
         card.style.display = show ? 'block' : 'none';
     });
 }
-
-// =====================================================
-// [v18.0] 與 AI 商量功能
-// =====================================================
-(function () {
-    const consultAiModal = document.getElementById('consult-ai-modal');
-    const consultChatWindow = document.getElementById('consult-chat-window');
-    const consultAiInput = document.getElementById('consult-ai-input');
-    const consultAiSendBtn = document.getElementById('consult-ai-send-btn');
-    const consultAiApplyBtn = document.getElementById('consult-ai-apply-btn');
-
-    let consultChatHistory = [];
-    let lastSuggestedPrompt = '';
-
-    // 重置對話
-    function resetConsultChat() {
-        consultChatHistory = [];
-        lastSuggestedPrompt = '';
-        consultChatWindow.innerHTML = `
-            <div class="text-center text-muted">
-                <i class="bi bi-robot" style="font-size: 3rem;"></i>
-                <p>告訴 AI 您想要什麼樣的圖片，我會幫您生成提示詞！</p>
-            </div>
-        `;
-        if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'none';
-    }
-
-    // 添加訊息到對話窗口
-    function addConsultMessage(text, isUser) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `chat-message-wrapper ${isUser ? 'user-message' : 'ai-message'}`;
-        messageDiv.innerHTML = `
-            <div class="message-bubble">
-                ${text.replace(/\n/g, '<br>')}
-            </div>
-        `;
-        consultChatWindow.appendChild(messageDiv);
-        consultChatWindow.scrollTop = consultChatWindow.scrollHeight;
-    }
-
-    // 發送訊息給 AI
-    async function sendConsultMessage() {
-        const userMessage = consultAiInput.value.trim();
-        if (!userMessage) return;
-
-        // 添加用戶訊息
-        addConsultMessage(userMessage, true);
-        consultAiInput.value = '';
-        consultChatHistory.push({ role: 'user', content: userMessage });
-
-        // 顯示載入中
-        addConsultMessage('正在思考...', false);
-        const loadingMsg = consultChatWindow.lastChild;
-
-        try {
-            // 獲取當前提示詞
-            const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
-
-            const response = await fetch('/api/comfyui/consult-ai', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: userMessage,
-                    currentPrompt: currentPrompt
-                })
-            });
-
-            const result = await response.json();
-
-            // 移除載入訊息
-            loadingMsg.remove();
-
-            if (response.ok && result.suggested_prompt) {
-                lastSuggestedPrompt = result.suggested_prompt;
-                consultChatHistory.push({ role: 'ai', content: result.suggested_prompt });
-
-                // 添加 AI 回覆
-                addConsultMessage(`建議的提示詞：\n\n${result.suggested_prompt}`, false);
-
-                // 顯示應用按鈕
-                if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'inline-block';
-            } else {
-                throw new Error(result.detail || '無法獲取 AI 回覆');
-            }
-        } catch (error) {
-            loadingMsg.remove();
-            addConsultMessage(`抱歉，發生錯誤：${error.message}`, false);
-        }
-    }
-
-    // 應用提示詞到輸入框
-    function applyConsultPrompt() {
-        if (lastSuggestedPrompt) {
-            const promptInput = document.getElementById('comfy-positive-prompt');
-            if (promptInput) {
-                promptInput.value = lastSuggestedPrompt;
-
-                // 關閉 Modal
-                const modal = bootstrap.Modal.getInstance(consultAiModal);
-                if (modal) modal.hide();
-
-                // 顯示成功提示
-                addConsultMessage('✅ 已應用到提示詞框', false);
-            }
-        }
-    }
-
-    // 事件監聽
-    if (consultAiSendBtn) {
-        consultAiSendBtn.addEventListener('click', sendConsultMessage);
-    }
-
-    if (consultAiInput) {
-        consultAiInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendConsultMessage();
-            }
-        });
-    }
-
-    if (consultAiApplyBtn) {
-        consultAiApplyBtn.addEventListener('click', applyConsultPrompt);
-    }
-
-    // --- 模型下載邏輯 (新功能 v32.0) ---
-    const downloadForm = document.getElementById('download-model-form');
-
-    // [v1.5] No Filter 監聽器
-    const modelNoFilterCheckbox = document.getElementById('model-no-filter-checkbox');
-    if (modelNoFilterCheckbox) {
-        modelNoFilterCheckbox.addEventListener('change', async () => {
-            await fetchAndPopulateCheckpoints();
-        });
-    }
-
-    const loraNoFilterCheckbox = document.getElementById('lora-no-filter-checkbox');
-    if (loraNoFilterCheckbox) {
-        loraNoFilterCheckbox.addEventListener('change', async () => {
-            if (comfyFormElements.model) {
-                await updateLoraListForModel(comfyFormElements.model);
-            }
-        });
-    }
-    if (downloadForm) {
-        downloadForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const urlInput = document.getElementById('download-model-url');
-            const typeInput = document.getElementById('download-model-type');
-            const nameInput = document.getElementById('download-model-name');
-            const statusDiv = document.getElementById('download-status');
-            const spinner = document.getElementById('download-model-spinner');
-            const submitBtn = document.getElementById('download-model-submit-btn');
-
-            if (!urlInput.value || !nameInput.value) {
-                alert("請填寫模型網址和檔案名稱");
-                return;
-            }
-
-            // 映射前端類型到後端資料夾名稱
-            let type = typeInput.value;
-            if (type === 'checkpoint') type = 'checkpoints';
-            if (type === 'lora') type = 'loras';
-
-            spinner.style.display = 'inline-block';
-            submitBtn.disabled = true;
-            statusDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 正在請求下載...</div>';
-
-            try {
-                const response = await fetchWithUserContext('/api/comfyui/download_model', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model_url: urlInput.value.trim(),
-                        model_type: type,
-                        model_name: nameInput.value.trim()
-                    })
-                });
-
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.detail || '請求失敗');
-
-                statusDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> 下載任務已啟動 (ID: ${result.task_id})。進度將透過系統通知顯示。</div>`;
-
-                // 5秒後重置
-                setTimeout(() => {
-                    statusDiv.innerHTML = '';
-                    submitBtn.disabled = false;
-                    spinner.style.display = 'none';
-                }, 5000);
-
-            } catch (err) {
-                statusDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-octagon"></i> 錯誤: ${err.message}</div>`;
-                submitBtn.disabled = false;
-                spinner.style.display = 'none';
-            }
-        });
-    }
-
-
-    // Modal 開啟時重置
-    if (consultAiModal) {
-        consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
-    }
-})();
