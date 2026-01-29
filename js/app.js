@@ -1293,8 +1293,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
                 // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
-                if (model.architecture === 'zit') {
-                    // Do nothing, keep 'zit'
+                // [v18.18 修正] 新增 zib 架構保留
+                if (model.architecture === 'zit' || model.architecture === 'zib') {
+                    // Do nothing, keep 'zit' / 'zib'
                 } else if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
                     model.isQwen = true;
@@ -1557,6 +1558,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 判斷是否為 Qwen 模型
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         const isZITModel = newArchitecture === 'zit';
+        const isZIBModel = newArchitecture === 'zib';
 
         if (isQwenModel) {
             // Qwen 模型特殊處理
@@ -1594,6 +1596,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞已關閉。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
+
+        } else if (isZIBModel) {
+            // [v2.3] ZIB 模型特殊處理
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
+
+            // 自動設定推薦的 ZIB 參數
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 30;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 5.0;
+            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'karras';
+
+            // ZIB 啟用負面提示詞
+            const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+            if (useNegativePromptCheckbox) {
+                useNegativePromptCheckbox.checked = true;
+                localStorage.setItem('comfy_use_negative_prompt', 'true');
+            }
+
+            console.log('ZIB 模式已啟用，已自動選擇 ae.safetensors 並設定 ZIB 參數 (Steps: 30, CFG: 5.0)，負面提示詞已啟用。');
+            if (comfyStatusText) comfyStatusText.textContent = 'ZIB 模式已啟用';
 
         } else {
             // [v2.0 新增] 對於所有非 Qwen/ZIT 模型，將 VAE 重設為預設值
