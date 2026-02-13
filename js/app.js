@@ -1566,10 +1566,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const lowVramCheckbox = document.getElementById('low_vram_mode');
 
         if (isZITModel || isZIBModel) {
-            if (lowVramContainer) lowVramContainer.style.display = 'block';
+            if (lowVramContainer) {
+                lowVramContainer.style.display = 'block';
+                console.log('Low VRAM Container: Show (ZIT/ZIB)');
+            }
             if (lowVramCheckbox) lowVramCheckbox.checked = true; // 預設開啟
         } else {
-            if (lowVramContainer) lowVramContainer.style.display = 'none';
+            // [DEBUG] 暫時不隱藏，以便使用者確認介面存在
+            // if (lowVramContainer) lowVramContainer.style.display = 'none';
+            if (lowVramContainer) {
+                console.log('Low VRAM Container: Not hiding (Debug)');
+            }
             if (lowVramCheckbox) lowVramCheckbox.checked = false;
         }
 
