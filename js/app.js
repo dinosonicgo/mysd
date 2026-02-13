@@ -1556,9 +1556,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (comfySelectedModelName) comfySelectedModelName.textContent = newModel.split(/[\\/]/).pop();
 
         // 判斷是否為 Qwen 模型
+
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         const isZITModel = newArchitecture === 'zit';
         const isZIBModel = newArchitecture === 'zib';
+
+        // [v2.4] Low VRAM Mode 控制邏輯
+        const lowVramContainer = document.getElementById('low-vram-mode-container');
+        const lowVramCheckbox = document.getElementById('low_vram_mode');
+
+        if (isZITModel || isZIBModel) {
+            if (lowVramContainer) lowVramContainer.style.display = 'block';
+            if (lowVramCheckbox) lowVramCheckbox.checked = true; // 預設開啟
+        } else {
+            if (lowVramContainer) lowVramContainer.style.display = 'none';
+            if (lowVramCheckbox) lowVramCheckbox.checked = false;
+        }
 
         if (isQwenModel) {
             // Qwen 模型特殊處理
@@ -2230,12 +2243,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await saveSettings();
 
+
         const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
         const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
+
+        // [v2.4] 讀取 Low VRAM Mode 狀態
+        const lowVramCheckbox = document.getElementById('low_vram_mode');
+        const isLowVramMode = lowVramCheckbox ? lowVramCheckbox.checked : false;
 
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
+            low_vram: isLowVramMode, // 新增此欄位
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
@@ -3407,10 +3426,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (response.ok && result.task_id) {
                         qwenStatusDiv.innerHTML = `<div class="alert alert-info small p-2">${result.message}</div>`;
-                        // 建立一個專門用於顯示 Qwen 下載進度的 div
                         const progressDisplay = document.createElement('div');
                         qwenStatusDiv.appendChild(progressDisplay);
-                        connectQwenDownloadWebSocket(result.task_id, progressDisplay, downloadQwenBtn);
+                        connectDownloadWebSocket(result.task_id, progressDisplay, downloadQwenBtn, "Qwen");
                     } else {
                         throw new Error(result.detail || '提交失敗，未收到任務 ID。');
                     }
@@ -3422,10 +3440,48 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // 中文註釋：connectQwenDownloadWebSocket函式開始
-        // 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
-        // v11.0 (並行進度顯示): [重大功能重構] 為適應後端並行下載，此函式被徹底重寫。它現在能夠動態地為每個接收到進度訊息的檔案創建一個專屬的進度條 DOM 元素（如果尚不存在），並獨立更新其狀態。這解決了之前因 `innerHTML` 覆蓋而無法同時顯示多個進度條的問題。
-        function connectQwenDownloadWebSocket(taskId, statusDiv, button) {
+        // [v2.5 新增] Z-Image NCNN 套件下載按鈕事件監聽
+        const downloadNcnnBtn = getById('download-ncnn-env-btn');
+        const lowVramContainer = getById('low-vram-mode-container');
+        if (downloadNcnnBtn && lowVramContainer) {
+            downloadNcnnBtn.addEventListener('click', async () => {
+                if (!confirm('確定要開始下載 Z-Image NCNN 環境套件嗎？\n這將包含主程式與所有模型檔案，總計約 18GB，可能需要較長時間。')) return;
+
+                downloadNcnnBtn.disabled = true;
+                downloadNcnnBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在提交請求...`;
+
+                let ncnnStatusDiv = getById('ncnn-download-status');
+                if (!ncnnStatusDiv) {
+                    ncnnStatusDiv = document.createElement('div');
+                    ncnnStatusDiv.id = 'ncnn-download-status';
+                    ncnnStatusDiv.className = 'mt-3';
+                    lowVramContainer.appendChild(ncnnStatusDiv);
+                }
+                ncnnStatusDiv.innerHTML = `<div class="alert alert-info small p-2">正在向後端發送 NCNN 套件下載指令...</div>`;
+
+                try {
+                    const response = await fetchWithUserContext('/api/comfyui/download_ncnn_env', { method: 'POST' });
+                    const result = await response.json();
+
+                    if (response.ok && result.task_id) {
+                        ncnnStatusDiv.innerHTML = `<div class="alert alert-info small p-2">${result.message}</div>`;
+                        const progressDisplay = document.createElement('div');
+                        ncnnStatusDiv.appendChild(progressDisplay);
+                        connectDownloadWebSocket(result.task_id, progressDisplay, downloadNcnnBtn, "NCNN");
+                    } else {
+                        throw new Error(result.detail || '提交失敗，未收到任務 ID。');
+                    }
+                } catch (error) {
+                    ncnnStatusDiv.innerHTML = `<div class="alert alert-danger small p-2">錯誤: ${error.message}</div>`;
+                    downloadNcnnBtn.disabled = false;
+                    downloadNcnnBtn.innerHTML = `<i class="bi bi-download"></i> 下載/更新 NCNN 核心環境 (約 18GB)`;
+                }
+            });
+        }
+
+        // 中文註釋：connectDownloadWebSocket函式開始
+        // 函式功能：建立 WebSocket 連線以接收套件的並行下載進度
+        function connectDownloadWebSocket(taskId, statusDiv, button, moduleName = "Qwen") {
             if (downloadWs && downloadWs.readyState === WebSocket.OPEN) downloadWs.close();
 
             const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
@@ -3441,7 +3497,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             statusDiv.appendChild(messageContainer);
             statusDiv.appendChild(progressContainer);
 
-            downloadWs.onopen = () => console.log(`已連接到 Qwen 下載 WebSocket，監聽任務 ID: ${taskId}`);
+            downloadWs.onopen = () => console.log(`已連接到 ${moduleName} 下載 WebSocket，監聽任務 ID: ${taskId}`);
 
             downloadWs.onmessage = (event) => {
                 const message = JSON.parse(event.data);
@@ -3480,7 +3536,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     case 'complete':
                         messageContainer.innerHTML += `<div class="alert alert-success small p-2 mt-2"><strong>完成:</strong> ${data.message}</div>`;
                         button.disabled = false;
-                        button.innerHTML = `<i class="bi bi-check-circle-fill"></i> Qwen 套件已就緒`;
+                        button.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${moduleName} 套件已就緒`;
                         downloadWs.close();
                         break;
                     case 'error':
@@ -3493,14 +3549,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
 
             downloadWs.onerror = (error) => {
-                console.error('Qwen 下載 WebSocket 錯誤:', error);
+                console.error(`${moduleName} 下載 WebSocket 錯誤:`, error);
                 messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
                 button.disabled = false;
                 button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
             };
         }
-        // 函式功能：建立 WebSocket 連線以接收 Qwen 套件的並行下載進度
-        // 中文註釋：connectQwenDownloadWebSocket函式結束
+        // 函式功能：建立 WebSocket 連線以接收套件的並行下載進度
+        // 中文註釋：connectDownloadWebSocket函式結束
 
 
         modelFilterCheckboxes.forEach(checkbox => {
