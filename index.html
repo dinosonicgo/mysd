@@ -991,6 +991,28 @@
                                         <input type="number" class="form-control" id="comfy-batch-size" value="1"
                                             min="1" max="20">
                                     </div>
+
+                                    <!-- [v2.7] Low VRAM 模式與 NCNN 下載 (移至主畫面) -->
+                                    <div class="card mb-3 border-warning" id="low-vram-mode-container">
+                                        <div class="card-body p-2">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" role="switch"
+                                                    id="low_vram_mode">
+                                                <label class="form-check-label fw-bold" for="low_vram_mode">
+                                                    <i class="bi bi-lightning-charge-fill text-warning"></i> Low VRAM
+                                                    極速模式
+                                                </label>
+                                            </div>
+                                            <small class="text-muted d-block mb-2 ms-1">
+                                                專為 4GB 顯卡優化，使用 NCNN 外部引擎加速。
+                                            </small>
+                                            <button class="btn btn-sm btn-outline-success w-100"
+                                                id="download-ncnn-env-btn-main">
+                                                <i class="bi bi-download"></i> 下載 NCNN 環境包 (18GB)
+                                            </button>
+                                        </div>
+                                    </div>
+
                                 </div>
                                 <!-- 圖像輸入頁籤 -->
                                 <div class="tab-pane fade" id="tab-pane-img2img" role="tabpanel"
@@ -1097,17 +1119,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="form-check form-switch mt-3" id="low-vram-mode-container">
-                                        <input class="form-check-input" type="checkbox" role="switch"
-                                            id="low_vram_mode">
-                                        <label class="form-check-label" for="low_vram_mode">
-                                            <i class="bi bi-lightning-charge-fill text-warning"></i> 低顯存極速模式 (Low VRAM)
-                                            <small class="text-muted d-block">
-                                                專為 4GB 顯卡優化，使用 NCNN 外部引擎加速生成。
-                                                <br>(需下載專用環境包，品質略有不同)
-                                            </small>
-                                        </label>
-                                    </div>
+
                                 </div>
 
                             </div>
@@ -1851,7 +1863,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1770996417"></script>
+    <script src="js/app.js?v=1770999325"></script>
 </body>
 
 </html>

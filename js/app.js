@@ -3451,6 +3451,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // [v2.6 修正] 支援 Modal 內與主畫面的按鈕
         const downloadNcnnBtn = getById('download-ncnn-env-btn');
         const downloadNcnnBtnModal = getById('download-ncnn-env-btn-modal'); // 新增 Modal 內的按鈕
+        const downloadNcnnBtnMain = getById('download-ncnn-env-btn-main'); // [v2.7] 主畫面按鈕
         const lowVramContainer = getById('low-vram-mode-container');
 
         // 定義共用的下載處理函式
@@ -3505,6 +3506,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (downloadNcnnBtnModal) {
             // Modal 按鈕的狀態顯示在按鈕下方
             downloadNcnnBtnModal.addEventListener('click', () => handleNcnnDownload(downloadNcnnBtnModal, downloadNcnnBtnModal.parentNode));
+        }
+
+        if (downloadNcnnBtnMain) {
+            // 主畫面按鈕的狀態顯示在按鈕下方 (也就是 lowVramContainer 內部)
+            downloadNcnnBtnMain.addEventListener('click', () => handleNcnnDownload(downloadNcnnBtnMain, lowVramContainer));
         }
 
         // 中文註釋：connectDownloadWebSocket函式開始
