@@ -1660,14 +1660,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // [v33.3] 強制所有模型預設使用 Gemma 翻譯 (使用者要求)
+        // [v33.3] 強制所有模型預設使用 LLM 翻譯 (優先 OpenRouter，否則 Gemma)
         if (comfyFormElements.translate_llm) {
             comfyFormElements.translate_llm.checked = true;
             if (comfyFormElements.translate_google) comfyFormElements.translate_google.checked = false;
             if (comfyFormElements.translate_none) comfyFormElements.translate_none.checked = false;
             // 舊版相容
             if (comfyFormElements.enable_local_translation) comfyFormElements.enable_local_translation.checked = true;
-            console.log('翻譯模式已預設重置為 Gemma (LLM)。');
+            console.log('翻譯模式已預設重置為 LLM（OpenRouter 優先，Gemma 備援）。');
         }
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
