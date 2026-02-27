@@ -475,27 +475,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     // v18.2 (CORS 修正): [根本性修正] 將此函式內部原生的 `fetch` 呼叫，替換為對 `fetchWithUserContext` 的呼叫。通過傳入 `device.url` 作為 `baseUrl`，確保了狀態檢測請求（心跳請求）與應用程式內所有其他 API 請求使用完全相同的標頭和 CORS 策略。這從根本上解決了因請求不一致而在跨來源場景下（GitHub Pages -> Cloudflare）導致的 CORS 錯誤，從而能夠準確判斷裝置是否在線。
     // v17.21 (在線狀態即時檢測): [根本性修正] 徹底重構了裝置在線狀態的檢測機制。不再依賴 `config.json` 中會過時的時間戳，而是在每次頁面載入時，透過新的 `checkDeviceStatus` 函式主動、並行地向每個裝置的 URL 發送即時的 API 請求（Ping）。這確保了無論何時刷新頁面，裝置的在線/離線狀態都能被準確地即時反映，從根本上解決了裝置運行超過5分鐘後被誤判為離線的問題。
     // v17.20 (FLUX 按需下載): 1. [功能新增] 實作了 FLUX 依賴模型的按需下載功能。在 `initialize` 時會先呼叫新的 `fetchDependencyStatus` 函式從後端獲取依賴模型的存在狀態。 2. [邏輯重構] 重構了 `createModelCard` 中的點擊事件，當偵測到使用者選擇 FLUX 模型時，會觸發 `handleFluxModelSelection` 檢查。 3. [UX 整合] 如果依賴模型缺失，會彈出包含檔案大小的確認框。同意後，`startDependencyDownload` 函式將呼叫後端 API 開始下載，並利用新增的 `dependency-download-modal` 和 WebSocket 連線來顯示即時進度，下載成功後再自動選定模型，實現了完整的按需下載閉環。
-    async function checkDeviceStatus(device) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超時
+    function summarizeNetworkError(error) {
+        if (!error) return '未知錯誤';
+        if (error.name === 'AbortError') return '連線逾時 (5 秒)';
+        const message = String(error.message || error);
+        if (message.includes('Failed to fetch')) return '無法連線（可能是 DNS、CORS 或 Tunnel 已失效）';
+        return message;
+    }
 
+    async function checkDeviceStatus(device) {
+        const probePath = '/api/comfyui/device_id';
+
+        // [v34.2 修正] 第一段探測：使用原生 fetch，避免自訂標頭觸發 CORS 預檢造成誤判。
+        const directController = new AbortController();
+        const directTimeoutId = setTimeout(() => directController.abort(), 5000);
         try {
-            // [v18.2 修正] 改為使用 fetchWithUserContext 以確保請求一致性
-            const response = await fetchWithUserContext(
-                '/api/comfyui/device_id',
-                {
-                    signal: controller.signal,
-                    cache: 'no-store'
-                },
-                device.url // 將裝置的特定 URL 作為 baseUrl 傳入
-            );
-            clearTimeout(timeoutId);
-            return response.ok ? 'online' : 'offline';
-        } catch (error) {
-            clearTimeout(timeoutId);
-            // 瀏覽器開發者工具 (F12) 的 Console 中可能會顯示詳細的 CORS 錯誤
-            console.error(`檢查裝置 ${device.url} 狀態失敗:`, error);
-            return 'offline';
+            const probeUrl = new URL(probePath, device.url).href;
+            const response = await fetch(probeUrl, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: directController.signal
+            });
+            clearTimeout(directTimeoutId);
+            return {
+                status: response.status < 500 ? 'online' : 'offline',
+                reason: response.status < 500 ? '' : `HTTP ${response.status}`
+            };
+        } catch (directError) {
+            clearTimeout(directTimeoutId);
+
+            // [v34.2 修正] 第二段探測：若直連失敗，再使用既有 user context 邏輯做兼容性驗證。
+            const fallbackController = new AbortController();
+            const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 5000);
+            try {
+                const response = await fetchWithUserContext(
+                    probePath,
+                    {
+                        signal: fallbackController.signal,
+                        cache: 'no-store'
+                    },
+                    device.url
+                );
+                clearTimeout(fallbackTimeoutId);
+                return {
+                    status: response.status < 500 ? 'online' : 'offline',
+                    reason: response.status < 500 ? '' : `HTTP ${response.status}`
+                };
+            } catch (fallbackError) {
+                clearTimeout(fallbackTimeoutId);
+                const reason = summarizeNetworkError(fallbackError || directError);
+                console.error(`檢查裝置 ${device.url} 狀態失敗: ${reason}`, fallbackError || directError);
+                return {
+                    status: 'offline',
+                    reason
+                };
+            }
         }
     }
     // 函式功能：即時檢測指定裝置的在線狀態
@@ -563,33 +597,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 中文註釋：switchDevice函式開始
     // 函式功能：處理切換到指定裝置的邏輯
-    async function switchDevice(deviceId) {
+    async function switchDevice(deviceId, forceConnect = false) {
         /**
          * [v2.0 硬重設修正]: [根本性修正] 在函式執行之初，立即呼叫新的 `resetApplicationState` 函式。
          *      此舉確保在請求新裝置的資料之前，所有前端 UI 元素（歷史紀錄、WebSocket、選擇的模型等）
          *      都被徹底清空和重設。這從根本上解決了切換裝置後因狀態殘留而需要手動整理頁面的問題。
          */
-        if (!sharedConfig.devices[deviceId] || sharedConfig.devices[deviceId].status !== 'online') {
+        const deviceInfo = sharedConfig.devices[deviceId];
+        if (!deviceInfo) {
+            alert(`找不到裝置 ${deviceId} 的設定。`);
+            return;
+        }
+        if (!forceConnect && deviceInfo.status !== 'online') {
             alert(`裝置 ${deviceId} 目前不在線或無法連接。`);
             return;
         }
 
         console.log(`正在切換到裝置: ${deviceId}`);
         document.body.style.cursor = 'wait';
+        try {
+            // [v2.0 新增] 執行硬重設，清空所有舊裝置的狀態
+            await resetApplicationState();
 
-        // [v2.0 新增] 執行硬重設，清空所有舊裝置的狀態
-        await resetApplicationState();
+            activeDeviceUrl = deviceInfo.url;
+            localStorage.setItem('gm_last_device', deviceId);
 
-        activeDeviceUrl = sharedConfig.devices[deviceId].url;
-        localStorage.setItem('gm_last_device', deviceId);
+            updateDeviceSelectorUI(deviceId);
 
-        updateDeviceSelectorUI(deviceId);
-
-        // 現在，在一個乾淨的狀態下為新裝置載入所有資料
-        await reloadDataForActiveDevice();
-
-        document.body.style.cursor = 'default';
-        console.log(`已成功切換到 ${deviceId}。`);
+            // 現在，在一個乾淨的狀態下為新裝置載入所有資料
+            await reloadDataForActiveDevice();
+            console.log(`已成功切換到 ${deviceId}。`);
+        } finally {
+            document.body.style.cursor = 'default';
+        }
     }
     // 函式功能：處理切換到指定裝置的邏輯
     // 中文註釋：switchDevice函式結束
@@ -635,8 +675,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             console.log("正在並行檢測所有裝置的即時狀態...");
             const statusChecks = Object.entries(sharedConfig.devices).map(async ([id, device]) => {
-                const status = await checkDeviceStatus(device);
-                sharedConfig.devices[id].status = status;
+                const health = await checkDeviceStatus(device);
+                sharedConfig.devices[id].status = health.status;
+                sharedConfig.devices[id].last_error = health.reason || '';
             });
             await Promise.all(statusChecks);
             console.log("裝置即時狀態檢測完成。");
@@ -680,8 +721,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (targetDevice) {
                     await switchDevice(targetDevice); // switchDevice 內部會設定好 activeDeviceUrl
                 } else {
-                    updateDeviceSelectorUI(null);
-                    alert('目前沒有任何遠端裝置在線。');
+                    // [v34.1 修正] 即時健康檢測全部失敗時，仍嘗試連線最後使用裝置，
+                    // 避免被「離線判斷」直接鎖死在登入後首頁。
+                    const allDeviceIds = Object.keys(sharedConfig.devices);
+                    const fallbackDevice = (lastDevice && allDeviceIds.includes(lastDevice))
+                        ? lastDevice
+                        : (allDeviceIds.length > 0 ? allDeviceIds[0] : null);
+
+                    if (fallbackDevice) {
+                        console.warn(`即時檢測無在線裝置，改為強制嘗試連線: ${fallbackDevice}`);
+                        try {
+                            await switchDevice(fallbackDevice, true);
+                            alert('即時檢測未找到在線裝置，已改為嘗試連線最近裝置。若仍失敗，請更新 Tunnel URL。');
+                        } catch (fallbackConnectError) {
+                            const diagnostics = Object.entries(sharedConfig.devices)
+                                .map(([id, dev]) => `${id}: ${dev.last_error || '無回應'}`)
+                                .join('\n');
+                            updateDeviceSelectorUI(null);
+                            alert(`遠端裝置目前無法連線。\n\n${diagnostics}\n\n請更新 config.json 的 Tunnel URL，或重新啟動 cloudflared。`);
+                            console.error('Fallback 裝置連線失敗:', fallbackConnectError);
+                        }
+                    } else {
+                        updateDeviceSelectorUI(null);
+                        alert('目前沒有任何遠端裝置可用（設定檔為空）。');
+                    }
                 }
             } else { // 非 GM 的遠端訪問者
                 if (userStatusDisplay) userStatusDisplay.textContent = '請登入 GM 以使用遠端功能';
