@@ -3890,8 +3890,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // --- 模型下載邏輯 (新功能 v32.0) ---
-        const downloadForm = document.getElementById('download-model-form');
-
         // [v1.5] No Filter 監聽器
         const modelNoFilterCheckbox = document.getElementById('model-no-filter-checkbox');
         if (modelNoFilterCheckbox) {
@@ -3910,62 +3908,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
-        if (downloadForm) {
-            downloadForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const urlInput = document.getElementById('download-model-url');
-                const typeInput = document.getElementById('download-model-type');
-                const nameInput = document.getElementById('download-model-name');
-                const statusDiv = document.getElementById('download-status');
-                const spinner = document.getElementById('download-model-spinner');
-                const submitBtn = document.getElementById('download-model-submit-btn');
-
-                if (!urlInput.value || !nameInput.value) {
-                    alert("請填寫模型網址和檔案名稱");
-                    return;
-                }
-
-                // 映射前端類型到後端資料夾名稱
-                let type = typeInput.value;
-                if (type === 'checkpoint') type = 'checkpoints';
-                if (type === 'lora') type = 'loras';
-
-                if (spinner) spinner.style.display = 'inline-block';
-                if (submitBtn) submitBtn.disabled = true;
-                if (statusDiv) statusDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 正在請求下載...</div>';
-
-                try {
-                    const response = await fetchWithUserContext('/api/comfyui/download_model', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            model_url: urlInput.value.trim(),
-                            model_type: type,
-                            model_name: nameInput.value.trim()
-                        })
-                    });
-
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.detail || '請求失敗');
-
-                    if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> 下載任務已啟動 (ID: ${result.task_id})。進度將透過系統通知顯示。</div>`;
-
-                    // 5秒後重置
-                    setTimeout(() => {
-                        if (statusDiv) statusDiv.innerHTML = '';
-                        if (submitBtn) submitBtn.disabled = false;
-                        if (spinner) spinner.style.display = 'none';
-                    }, 5000);
-
-                } catch (err) {
-                    if (statusDiv) statusDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-octagon"></i> 錯誤: ${err.message}</div>`;
-                    if (submitBtn) submitBtn.disabled = false;
-                    if (spinner) spinner.style.display = 'none';
-                }
-            });
-        }
-
-
         // Modal 開啟時重置
         if (consultAiModal) {
             consultAiModal.addEventListener('show.bs.modal', resetConsultChat);
