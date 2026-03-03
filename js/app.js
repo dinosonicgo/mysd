@@ -1600,7 +1600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 函式功能：處理模型選擇事件，更新應用程式狀態並觸發 LoRA 列表刷新
     async function selectModel(item) {
         /*
-         * [v2.1 ZIT 自動設定]: [功能優化] 當選擇 Z-Image-Turbo (ZIT) 模型時，自動設定 VAE 為 'ae.safetensors'，並調整推薦的 Turbo 參數 (Steps: 10, CFG: 2.0)。
+         * [v2.1 ZIT 自動設定]: [功能優化] 當選擇 Z-Image-Turbo (ZIT) 模型時，自動設定 VAE 為 'ae.safetensors'，並套用官方推薦 Turbo 預設值 (Steps: 8, CFG: 0)。
          * [v2.0 VAE 自動切換]: [功能優化] 新增了在選擇非 Qwen 模型時，
          *      自動將 VAE 下拉選單重設為「模型內建 VAE」('model_embedded') 的邏輯。
          *      這可以防止使用者在切換模型後，忘記更改不相容的 VAE 而導致生圖失敗。
@@ -1661,11 +1661,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
         } else if (isZITModel) {
             // [v2.1] ZIT 模型特殊處理
+            // [v36.0] 官方 Z-Image 推薦: steps=8, cfg=0 (DMD distilled 模型不使用 CFG)
+            // 來源: https://github.com/Tongyi-MAI/Z-Image (num_inference_steps=9, guidance_scale=0.0)
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
 
-            // 自動設定推薦的 Turbo 參數，但允許使用者之後修改
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 10;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            // 切換模型時套用官方預設值，使用者可在UI中自由修改
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 0;
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
             // [v2.2] ZIT 模型不需要負面提示詞，自動關閉
@@ -1675,28 +1677,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.setItem('comfy_use_negative_prompt', 'false');
             }
 
-
-
-            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並設定 Turbo 參數 (Steps: 10, CFG: 1.0)，負面提示詞已關閉。');
+            console.log('ZIT 模式已啟用，已自動選擇 ae.safetensors 並套用官方 Turbo 預設 (Steps: 8, CFG: 0)，負面提示詞已關閉。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIT 模式 (Turbo) 已啟用';
 
         } else if (isZIBModel) {
             // [v2.3] ZIB 模型特殊處理
+            // [v36.0] 官方 Z-Image 推薦: steps=28-50, cfg=3-5, scheduler=simple, negative_prompt 強烈推薦
+            // 來源: https://github.com/Tongyi-MAI/Z-Image (num_inference_steps=50, guidance_scale=4)
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
 
-            // 自動設定推薦的 ZIB 參數
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 30;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 5.0;
-            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'karras';
+            // 切換模型時套用官方預設值，使用者可在UI中自由修改
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 28;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 4.0;
+            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
-            // ZIB 啟用負面提示詞
+            // ZIB 啟用負面提示詞（官方強烈推薦）
             const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
             if (useNegativePromptCheckbox) {
                 useNegativePromptCheckbox.checked = true;
                 localStorage.setItem('comfy_use_negative_prompt', 'true');
             }
 
-            console.log('ZIB 模式已啟用，已自動選擇 ae.safetensors 並設定 ZIB 參數 (Steps: 30, CFG: 5.0)，負面提示詞已啟用。');
+            console.log('ZIB 模式已啟用，已自動選擇 ae.safetensors 並套用官方 ZIB 預設 (Steps: 28, CFG: 4.0)，負面提示詞已啟用。');
             if (comfyStatusText) comfyStatusText.textContent = 'ZIB 模式已啟用';
 
         } else {
