@@ -3827,7 +3827,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: userMessage,
-                        currentPrompt: currentPrompt
+                        currentPrompt: currentPrompt,
+                        // [v38.2] 連動翻譯模式、模型架構、固定提示詞
+                        modelArch: comfyFormElements.model_architecture || 'sdxl',
+                        fixedPrompt: comfyFormElements.fixed_prompt?.value || '',
+                        fixedPromptPosition: comfyFormElements.fixed_prompt_prepend?.checked ? 'prepend' : 'append',
+                        translationMode: comfyFormElements.translate_llm?.checked ? 'llm'
+                            : comfyFormElements.translate_google?.checked ? 'google' : 'none',
+                        qualityTags: !(comfyFormElements.fixed_prompt?.value?.trim()),  // 有固定提示詞時不重複加畫質標
                     })
                 });
 
