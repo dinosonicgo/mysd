@@ -1667,7 +1667,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 切換模型時套用官方預設值，使用者可在UI中自由修改
             if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 0;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1;
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
             // [v2.2] ZIT 模型不需要負面提示詞，自動關閉
