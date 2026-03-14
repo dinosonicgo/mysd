@@ -3877,6 +3877,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // 移除載入訊息
                 if (loadingMsg) loadingMsg.remove();
 
+                if (response.ok && result.success === false && result.message) {
+                    // 需求不足時，提示使用者補充描述
+                    addConsultMessage(result.message, false);
+                    if (consultAiApplyBtn) consultAiApplyBtn.style.display = 'none';
+                    return;
+                }
                 if (response.ok && result.suggested_prompt) {
                     lastSuggestedPrompt = result.suggested_prompt;
                     consultChatHistory.push({ role: 'ai', content: result.suggested_prompt });
