@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         scheduler: getById('comfy-scheduler'),
         optimize_positive: getById('comfy-optimize-positive-checkbox'),
         ai_optimize: getById('comfy-ai-optimize-checkbox'),
+        ai_optimize_local_llm: getById('comfy-ai-optimize-local-llm'),
         translate_negative: getById('comfy-translate-negative-checkbox'),
         enable_adetailer: getById('comfy-enable-adetailer'),
         adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
@@ -68,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         enable_local_translation: getById('comfy-enable-local-translation'), // 保留相容性
         // [v33.2] 新增翻譯模式 radio 選項
         translate_llm: getById('comfy-translate-llm'),
+        translate_local_llm: getById('comfy-translate-local-llm'),
         translate_google: getById('comfy-translate-google'),
         translate_none: getById('comfy-translate-none'),
     };
@@ -1065,6 +1067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
             optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
             ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
+            use_local_llm_optimize: comfyFormElements.ai_optimize_local_llm ? comfyFormElements.ai_optimize_local_llm.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
@@ -1073,9 +1076,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded',
             // [v33.2] 翻譯模式
-            translation_mode: comfyFormElements.translate_llm?.checked ? 'llm' :
+            translation_mode: comfyFormElements.translate_local_llm?.checked ? 'llm_local' :
+                comfyFormElements.translate_llm?.checked ? 'llm' :
                 comfyFormElements.translate_google?.checked ? 'google' : 'none',
-            enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_google?.checked
+            enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_local_llm?.checked || comfyFormElements.translate_google?.checked
         };
 
         // 前端持久化開關狀態
@@ -1164,6 +1168,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (typeof settings.ai_optimize === 'boolean' && comfyFormElements.ai_optimize) {
                 comfyFormElements.ai_optimize.checked = settings.ai_optimize;
             }
+            if (typeof settings.use_local_llm_optimize === 'boolean' && comfyFormElements.ai_optimize_local_llm) {
+                comfyFormElements.ai_optimize_local_llm.checked = settings.use_local_llm_optimize;
+            }
 
             if (typeof settings.translate_negative === 'boolean' && comfyFormElements.translate_negative) {
                 comfyFormElements.translate_negative.checked = settings.translate_negative;
@@ -1179,6 +1186,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 載入本地翻譯開關設定
             if (typeof settings.enable_local_translation === 'boolean' && comfyFormElements.enable_local_translation) {
                 comfyFormElements.enable_local_translation.checked = settings.enable_local_translation;
+            }
+            if (typeof settings.translation_mode === 'string') {
+                const mode = settings.translation_mode;
+                if (mode === 'llm_local' && comfyFormElements.translate_local_llm) {
+                    comfyFormElements.translate_local_llm.checked = true;
+                } else if (mode === 'llm' && comfyFormElements.translate_llm) {
+                    comfyFormElements.translate_llm.checked = true;
+                } else if (mode === 'google' && comfyFormElements.translate_google) {
+                    comfyFormElements.translate_google.checked = true;
+                } else if (mode === 'none' && comfyFormElements.translate_none) {
+                    comfyFormElements.translate_none.checked = true;
+                }
             }
 
             if (settings.vae && comfyFormElements.vae) {
@@ -1726,8 +1745,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // [v33.3] 強制所有模型預設使用 LLM 翻譯 (優先 OpenRouter，否則 Gemma)
-        if (comfyFormElements.translate_llm) {
+        const localLlmSelected = comfyFormElements.translate_local_llm?.checked;
+        if (comfyFormElements.translate_llm && !localLlmSelected) {
             comfyFormElements.translate_llm.checked = true;
+            if (comfyFormElements.translate_local_llm) comfyFormElements.translate_local_llm.checked = false;
             if (comfyFormElements.translate_google) comfyFormElements.translate_google.checked = false;
             if (comfyFormElements.translate_none) comfyFormElements.translate_none.checked = false;
             // 舊版相容
@@ -2345,6 +2366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inpaint_mask: img2imgState.inpaint_mask,
             optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
             ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
+            use_local_llm_optimize: comfyFormElements.ai_optimize_local_llm ? comfyFormElements.ai_optimize_local_llm.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
@@ -2357,11 +2379,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
             vae: comfyFormElements.vae.value,
-            // [v33.2] 翻譯模式: 'llm' | 'google' | 'none'
-            translation_mode: comfyFormElements.translate_llm?.checked ? 'llm' :
+            // [v33.2] 翻譯模式: 'llm' | 'llm_local' | 'google' | 'none'
+            translation_mode: comfyFormElements.translate_local_llm?.checked ? 'llm_local' :
+                comfyFormElements.translate_llm?.checked ? 'llm' :
                 comfyFormElements.translate_google?.checked ? 'google' : 'none',
             // 保留相容性
-            enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_google?.checked
+            enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_local_llm?.checked || comfyFormElements.translate_google?.checked
         };
 
         // --- 進度條總步數預算 ---
@@ -3215,14 +3238,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (comfyFormElements.optimize_positive && comfyFormElements.ai_optimize) {
-            comfyFormElements.optimize_positive.addEventListener('change', (e) => {
-                const isEnabled = e.target.checked;
+            const syncOptimizeControls = (isEnabled) => {
                 comfyFormElements.ai_optimize.disabled = !isEnabled;
                 if (!isEnabled) {
                     comfyFormElements.ai_optimize.checked = false;
                 }
+                if (comfyFormElements.ai_optimize_local_llm) {
+                    comfyFormElements.ai_optimize_local_llm.disabled = !isEnabled;
+                    if (!isEnabled) {
+                        comfyFormElements.ai_optimize_local_llm.checked = false;
+                    }
+                }
+            };
+            comfyFormElements.optimize_positive.addEventListener('change', (e) => {
+                syncOptimizeControls(e.target.checked);
             });
-            comfyFormElements.optimize_positive.dispatchEvent(new Event('change'));
+            syncOptimizeControls(comfyFormElements.optimize_positive.checked);
         }
 
         if (enableControlnetSwitch) {
@@ -3832,7 +3863,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         modelArch: comfyFormElements.model_architecture || 'sdxl',
                         fixedPrompt: comfyFormElements.fixed_prompt?.value || '',
                         fixedPromptPosition: comfyFormElements.fixed_prompt_prepend?.checked ? 'prepend' : 'append',
-                        translationMode: comfyFormElements.translate_llm?.checked ? 'llm'
+                        translationMode: comfyFormElements.translate_local_llm?.checked ? 'llm_local'
+                            : comfyFormElements.translate_llm?.checked ? 'llm'
                             : comfyFormElements.translate_google?.checked ? 'google' : 'none',
                         qualityTags: !(comfyFormElements.fixed_prompt?.value?.trim()),  // 有固定提示詞時不重複加畫質標
                     })
