@@ -3800,6 +3800,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const consultAiInput = document.getElementById('consult-ai-input');
         const consultAiSendBtn = document.getElementById('consult-ai-send-btn');
         const consultAiApplyBtn = document.getElementById('consult-ai-apply-btn');
+        const consultAiUseLocalLlm = document.getElementById('consult-ai-use-local-llm');
 
         let consultChatHistory = [];
         let lastSuggestedPrompt = '';
@@ -3866,6 +3867,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         translationMode: comfyFormElements.translate_local_llm?.checked ? 'llm_local'
                             : comfyFormElements.translate_llm?.checked ? 'llm'
                             : comfyFormElements.translate_google?.checked ? 'google' : 'none',
+                        llmProvider: consultAiUseLocalLlm?.checked ? 'local' : 'cloud',
                         qualityTags: !(comfyFormElements.fixed_prompt?.value?.trim()),  // 有固定提示詞時不重複加畫質標
                     })
                 });
