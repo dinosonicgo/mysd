@@ -3867,7 +3867,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         translationMode: comfyFormElements.translate_local_llm?.checked ? 'llm_local'
                             : comfyFormElements.translate_llm?.checked ? 'llm'
                             : comfyFormElements.translate_google?.checked ? 'google' : 'none',
-                        llmProvider: consultAiUseLocalLlm?.checked ? 'local' : 'cloud',
+                        llmProvider: (consultAiUseLocalLlm?.checked || comfyFormElements.translate_local_llm?.checked) ? 'local' : 'cloud',
                         qualityTags: !(comfyFormElements.fixed_prompt?.value?.trim()),  // 有固定提示詞時不重複加畫質標
                     })
                 });
