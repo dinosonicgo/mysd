@@ -876,9 +876,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function checkChatServiceStatus() {
-        // [v3.0 修正] Chat 服務已移除，直接設為離線以避免 405 錯誤
-        updateChatUI(false);
-        /*
+        // [v3.1] Chat 服務改為本地 Ollama 直連，恢復狀態檢查
         try {
             const response = await fetchWithUserContext('/api/system/chat_service_status');
             const data = await response.json();
@@ -893,7 +891,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateChatUI(false);
             chatStartupStatus.textContent = '錯誤: 無法連接到主伺服器。';
         }
-        */
     }
 
     async function startChatService() {
@@ -1643,25 +1640,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isZITModel = newArchitecture === 'zit';
         const isZIBModel = newArchitecture === 'zib';
 
-        // [v2.4] Low VRAM Mode 控制邏輯
-        const lowVramContainer = document.getElementById('low-vram-mode-container');
-        const lowVramCheckbox = document.getElementById('low_vram_mode');
-
-        if (isZITModel || isZIBModel) {
-            if (lowVramContainer) {
-                lowVramContainer.style.display = 'block';
-                console.log('Low VRAM Container: Show (ZIT/ZIB)');
-            }
-            if (lowVramCheckbox) lowVramCheckbox.checked = true; // 預設開啟
-        } else {
-            // [DEBUG] 暫時不隱藏，以便使用者確認介面存在
-            // if (lowVramContainer) lowVramContainer.style.display = 'none';
-            if (lowVramContainer) {
-                console.log('Low VRAM Container: Not hiding (Debug)');
-            }
-            if (lowVramCheckbox) lowVramCheckbox.checked = false;
-        }
-
         if (isQwenModel) {
             // Qwen 模型特殊處理
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
@@ -2340,14 +2318,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
         const useNegativePrompt = useNegativePromptCheckbox ? useNegativePromptCheckbox.checked : true;
 
-        // [v2.4] 讀取 Low VRAM Mode 狀態
-        const lowVramCheckbox = document.getElementById('low_vram_mode');
-        const isLowVramMode = lowVramCheckbox ? lowVramCheckbox.checked : false;
-
         const payload = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
-            low_vram: isLowVramMode, // 新增此欄位
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value.trim() : '',
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
@@ -3543,71 +3516,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // [v2.5 新增] Z-Image NCNN 套件下載按鈕事件監聽
-        // [v2.6 修正] 支援 Modal 內與主畫面的按鈕
-        const downloadNcnnBtn = getById('download-ncnn-env-btn');
-        const downloadNcnnBtnModal = getById('download-ncnn-env-btn-modal'); // 新增 Modal 內的按鈕
-        const downloadNcnnBtnMain = getById('download-ncnn-env-btn-main'); // [v2.7] 主畫面按鈕
-        const lowVramContainer = getById('low-vram-mode-container');
-
-        // 定義共用的下載處理函式
-        const handleNcnnDownload = async (btn, statusContainer) => {
-            if (!confirm('確定要開始下載 Z-Image NCNN 環境套件嗎？\n這將包含主程式與所有模型檔案，總計約 18GB，可能需要較長時間。')) return;
-
-            btn.disabled = true;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在提交請求...`;
-
-            let ncnnStatusDiv = getById('ncnn-download-status');
-            // 如果沒指定狀態容器，嘗試在 lowVramContainer 建立，或在 modal body 尋找合適位置 (這裡簡化處理)
-            if (!ncnnStatusDiv && statusContainer) {
-                ncnnStatusDiv = document.createElement('div');
-                ncnnStatusDiv.id = 'ncnn-download-status';
-                ncnnStatusDiv.className = 'mt-3';
-                statusContainer.appendChild(ncnnStatusDiv);
-            }
-            // 如果還是找不到 (例如 Modal 內)，就建立一個全域的或 alert 提示
-            if (!ncnnStatusDiv) {
-                // 為 Modal 建立臨時狀態區
-                ncnnStatusDiv = document.createElement('div');
-                ncnnStatusDiv.className = 'alert alert-info mt-2';
-                btn.parentNode.appendChild(ncnnStatusDiv);
-            }
-
-            ncnnStatusDiv.innerHTML = `<div class="alert alert-info small p-2">正在向後端發送 NCNN 套件下載指令...</div>`;
-
-            try {
-                const response = await fetchWithUserContext('/api/comfyui/download_ncnn_env', { method: 'POST' });
-                const result = await response.json();
-
-                if (response.ok && result.task_id) {
-                    ncnnStatusDiv.innerHTML = `<div class="alert alert-info small p-2">${result.message}</div>`;
-                    const progressDisplay = document.createElement('div');
-                    ncnnStatusDiv.appendChild(progressDisplay);
-                    connectDownloadWebSocket(result.task_id, progressDisplay, btn, "NCNN");
-                } else {
-                    throw new Error(result.detail || '提交失敗，未收到任務 ID。');
-                }
-            } catch (error) {
-                ncnnStatusDiv.innerHTML = `<div class="alert alert-danger small p-2">錯誤: ${error.message}</div>`;
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
-        };
-
-        if (downloadNcnnBtn && lowVramContainer) {
-            downloadNcnnBtn.addEventListener('click', () => handleNcnnDownload(downloadNcnnBtn, lowVramContainer));
-        }
-
-        if (downloadNcnnBtnModal) {
-            // Modal 按鈕的狀態顯示在按鈕下方
-            downloadNcnnBtnModal.addEventListener('click', () => handleNcnnDownload(downloadNcnnBtnModal, downloadNcnnBtnModal.parentNode));
-        }
-
-        if (downloadNcnnBtnMain) {
-            // 主畫面按鈕的狀態顯示在按鈕下方 (也就是 lowVramContainer 內部)
-            downloadNcnnBtnMain.addEventListener('click', () => handleNcnnDownload(downloadNcnnBtnMain, lowVramContainer));
-        }
+        // [NCNN] 已停用，相關下載按鈕與流程已移除
 
         // 中文註釋：connectDownloadWebSocket函式開始
         // 函式功能：建立 WebSocket 連線以接收套件的並行下載進度
