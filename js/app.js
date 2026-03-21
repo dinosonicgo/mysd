@@ -3765,16 +3765,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const loadingMsg = consultChatWindow ? consultChatWindow.lastChild : null;
 
             try {
-                // 獲取當前提示詞
-                const currentPrompt = document.getElementById('comfy-positive-prompt')?.value || '';
-
                 // [Fix] 使用 fetchWithUserContext 以確保遠端連線正確
                 const response = await fetchWithUserContext('/api/comfyui/consult-ai', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: userMessage,
-                        currentPrompt: currentPrompt,
                         // [v38.2] 連動翻譯模式、模型架構、固定提示詞
                         modelArch: comfyFormElements.model_architecture || 'sdxl',
                         fixedPrompt: comfyFormElements.fixed_prompt?.value || '',
