@@ -1110,6 +1110,19 @@
                             </div>
 
                             <hr>
+                            <h5><i class="bi bi-diagram-3"></i> 工作流模式</h5>
+                            <div class="mb-3">
+                                <label for="comfy-workflow-variant" class="form-label"><strong>生成工作流</strong></label>
+                                <select class="form-select" id="comfy-workflow-variant">
+                                    <option value="standard" selected>標準 ZIT / ZIB 工作流</option>
+                                    <option value="darkbeast_moody_special">DarkBeast / Moody 專用雙段工作流</option>
+                                </select>
+                                <small class="form-text text-muted d-block mt-1">
+                                    專用模式只會套用在 ZIT / ZIB 模型，方便你直接切換比較兩種輸出。
+                                </small>
+                            </div>
+
+                            <hr>
                             <h5><i class="bi bi-translate"></i> 翻譯設定</h5>
                             <!-- [v33.2] 新增翻譯模式選擇 -->
                             <div class="mb-3">
@@ -1117,8 +1130,8 @@
                                     <input class="form-check-input" type="radio" name="translation-mode"
                                         id="comfy-translate-llm" value="llm" checked>
                                     <label class="form-check-label" for="comfy-translate-llm">
-                                        <i class="bi bi-robot"></i> LLM翻譯 (OpenRouter / Gemma 3)
-                                        <small class="text-muted d-block">高品質標籤式/描述式翻譯</small>
+                                        <i class="bi bi-robot"></i> LLM翻譯 (Gemini 2.5 Flash-Lite / NVIDIA NIM / OpenRouter)
+                                        <small class="text-muted d-block">預設先走 Gemini，高品質標籤式/描述式翻譯</small>
                                     </label>
                                 </div>
                                 <div class="form-check mt-2">
@@ -1846,7 +1859,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1774063794"></script>
+    <script src="js/app.js?v=1774104219"></script>
 </body>
 
 </html>

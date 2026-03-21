@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
+        workflow_variant: getById('comfy-workflow-variant'),
         loras: [],
         positive_prompt: getById('comfy-positive-prompt'),
         negative_prompt: getById('comfy-negative-prompt'),
@@ -1048,6 +1049,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const settings = {
             model: comfyFormElements.model,
             model_architecture: comfyFormElements.model_architecture,
+            workflow_variant: comfyFormElements.workflow_variant ? comfyFormElements.workflow_variant.value : 'standard',
             loras: comfyFormElements.loras,
             main_prompt: comfyFormElements.positive_prompt ? comfyFormElements.positive_prompt.value : '',
             negative_prompt: comfyFormElements.negative_prompt ? comfyFormElements.negative_prompt.value : '',
@@ -1117,6 +1119,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (settings.model_architecture) {
                 comfyFormElements.model_architecture = settings.model_architecture;
+            }
+            if (settings.workflow_variant && comfyFormElements.workflow_variant) {
+                comfyFormElements.workflow_variant.value = settings.workflow_variant;
             }
 
             if (Array.isArray(settings.loras)) {
@@ -2331,6 +2336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             cfg: comfyFormElements.cfg ? parseFloat(comfyFormElements.cfg.value) : 8.0,
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
+            workflow_variant: comfyFormElements.workflow_variant ? comfyFormElements.workflow_variant.value : 'standard',
             batch_size: comfyFormElements.batch_size ? parseInt(comfyFormElements.batch_size.value, 10) : 1,
             width: 1024,
             height: 1024,
