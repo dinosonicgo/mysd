@@ -249,6 +249,60 @@ document.addEventListener('DOMContentLoaded', async () => {
     let deviceHistoryCache = {};
     let currentHistoryObserver = null;
 
+    function getCurrentHistoryDeviceId() {
+        return userContext.user_type === 'gm'
+            ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device')
+            : localDeviceId;
+    }
+
+    function ensureCurrentHistoryCache() {
+        const deviceId = getCurrentHistoryDeviceId();
+        if (!deviceHistoryCache[deviceId]) {
+            deviceHistoryCache[deviceId] = { items: [], hasMore: true };
+        }
+        return { deviceId, cache: deviceHistoryCache[deviceId] };
+    }
+
+    function removeHistoryItemElement(element) {
+        if (!element) return;
+        const header = element.previousElementSibling;
+        element.remove();
+        if (header && header.classList.contains('history-date-header') && (!header.nextElementSibling || !header.nextElementSibling.classList.contains('history-item'))) {
+            header.remove();
+        }
+    }
+
+    function removeHistoryItemFromCurrentDevice(itemId, { rerenderIfEmpty = true } = {}) {
+        if (!itemId) return;
+        const { cache } = ensureCurrentHistoryCache();
+        cache.items = cache.items.filter(item => item.id !== itemId);
+        currentHistoryList = currentHistoryList.filter(item => item.id !== itemId);
+        selectedItems.delete(itemId);
+        updateSelectionCount();
+
+        if (rerenderIfEmpty && cache.items.length === 0) {
+            renderHistory([]);
+        }
+    }
+
+    function resetCurrentDeviceHistoryState() {
+        const { deviceId } = ensureCurrentHistoryCache();
+        deviceHistoryCache[deviceId] = { items: [], hasMore: true };
+        currentHistoryList = [];
+        hasMoreHistory = true;
+        selectedItems.clear();
+        updateSelectionCount();
+        if (currentHistoryObserver) {
+            currentHistoryObserver.disconnect();
+            currentHistoryObserver = null;
+        }
+        if (historyLoadingIndicator) {
+            historyLoadingIndicator.style.display = 'none';
+            historyLoadingIndicator.textContent = '';
+            historyLoadingIndicator.remove();
+        }
+    }
+
 
 
 
@@ -1854,6 +1908,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             mediaElement.loading = 'lazy';
         }
 
+        mediaElement.addEventListener('error', () => {
+            console.warn('歷史媒體檔案不存在，將從前端清除:', item.filename || item.id);
+            removeHistoryItemFromCurrentDevice(item.id);
+            removeHistoryItemElement(historyItemDiv);
+        }, { once: true });
+
         const selectionOverlay = document.createElement('div');
         selectionOverlay.className = 'selection-overlay';
         selectionOverlay.innerHTML = `<i class="bi bi-check-circle-fill selection-icon"></i>`;
@@ -1862,8 +1922,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (isSelectionMode) {
                 toggleItemSelection(historyItemDiv, item.id);
             } else {
-                // 從快取中找到正確的列表來計算索引
-                const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+                const { deviceId } = ensureCurrentHistoryCache();
                 const currentList = deviceHistoryCache[deviceId] ? deviceHistoryCache[deviceId].items : [];
                 currentModalIndex = currentList.findIndex(i => i.id === item.id);
 
@@ -1906,12 +1965,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             historyLoadingIndicator.style.display = 'block';
         }
 
-        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
-
-        if (!deviceHistoryCache[deviceId]) {
-            deviceHistoryCache[deviceId] = { items: [], hasMore: true };
-        }
-        const cache = deviceHistoryCache[deviceId];
+        const { cache } = ensureCurrentHistoryCache();
 
         let url = '/api/comfyui/history?limit=30';
         if (mode === 'older' && cache.items.length > 0) {
@@ -1923,13 +1977,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetchWithUserContext(url);
             if (!response.ok) throw new Error(`無法獲取歷史紀錄: ${response.statusText}`);
-            const items = await response.json();
+            const fetchedItems = await response.json();
+            const items = fetchedItems.filter(item => item && item.id && item.url && item.filename);
 
             if (mode === 'newer') {
-                cache.items.unshift(...items);
-                if (items.length > 0) renderHistory(cache.items); // 只有在有新項目時才重新渲染整個列表
+                const existingIds = new Set(cache.items.map(item => item.id));
+                const uniqueNewItems = items.filter(item => !existingIds.has(item.id));
+                cache.items.unshift(...uniqueNewItems);
+                if (uniqueNewItems.length > 0) {
+                    renderHistory(cache.items);
+                    setupIntersectionObserver();
+                }
             } else {
-                cache.items.push(...items);
+                const existingIds = new Set(cache.items.map(item => item.id));
+                const uniqueItems = items.filter(item => !existingIds.has(item.id));
+                cache.items.push(...uniqueItems);
                 if (mode === 'initial') {
                     renderHistory(cache.items);
                 }
@@ -1961,6 +2023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderHistory(items) {
         if (!comfyHistoryGrid) return;
 
+        currentHistoryList = Array.isArray(items) ? [...items] : [];
         comfyHistoryGrid.innerHTML = '';
 
         if (!items || items.length === 0) {
@@ -2010,7 +2073,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentHistoryObserver = null;
         }
 
-        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
+        const { deviceId } = ensureCurrentHistoryCache();
 
         // [v3.0 效能優化] 檢查裝置快取
         if (deviceHistoryCache[deviceId] && deviceHistoryCache[deviceId].items.length > 0) {
@@ -2040,8 +2103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function setupIntersectionObserver() {
         if (currentHistoryObserver) currentHistoryObserver.disconnect();
 
-        const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
-        const cache = deviceHistoryCache[deviceId];
+        const { cache } = ensureCurrentHistoryCache();
 
         // [v3.1 修正] 確保載入指示器在 Grid 中佔據整行，否則可能無法正確觸發可見性偵測
         if (historyLoadingIndicator) {
@@ -2115,20 +2177,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             const result = await response.json();
             if (response.ok) {
-                const header = elementToRemove.previousElementSibling;
-                elementToRemove.remove();
-                if (header && header.classList.contains('history-date-header') && (!header.nextElementSibling || !header.nextElementSibling.classList.contains('history-item'))) {
-                    header.remove();
-                }
-
-                // [v2.1 修正] 從當前裝置的快取中移除項目
-                const deviceId = userContext.user_type === 'gm' ? (Object.entries(sharedConfig.devices).find(([id, dev]) => dev.url === activeDeviceUrl)?.[0] || 'unknown_device') : localDeviceId;
-                if (deviceHistoryCache[deviceId]) {
-                    deviceHistoryCache[deviceId].items = deviceHistoryCache[deviceId].items.filter(item => item.id !== id);
-                    if (deviceHistoryCache[deviceId].items.length === 0) {
-                        renderHistory([]); // 如果列表為空，重新渲染以顯示提示
-                    }
-                }
+                removeHistoryItemElement(elementToRemove);
+                removeHistoryItemFromCurrentDevice(id);
 
             } else {
                 throw new Error(result.detail || '刪除失敗');
@@ -3379,9 +3429,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (historyDeleteAllBtn) historyDeleteAllBtn.addEventListener('click', async () => {
             if (confirm('確定要刪除所有歷史紀錄嗎？此操作不可復原！')) {
                 await fetchWithUserContext('/api/comfyui/history/delete-all', { method: 'POST' });
-                currentHistoryList = [];
-                hasMoreHistory = false;
-                renderHistory([], 'initial');
+                resetCurrentDeviceHistoryState();
+                renderHistory([]);
                 toggleSelectionMode(false);
             }
         });
@@ -3407,13 +3456,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         const deletedIds = new Set(idsToDelete);
                         comfyHistoryGrid.querySelectorAll('.history-item.is-selected').forEach(el => {
-                            const header = el.previousElementSibling;
-                            el.remove();
-                            if (header && header.classList.contains('history-date-header') && (!header.nextElementSibling || !header.nextElementSibling.classList.contains('history-item'))) {
-                                header.remove();
-                            }
+                            removeHistoryItemElement(el);
                         });
-                        currentHistoryList = currentHistoryList.filter(item => !deletedIds.has(item.id));
+                        deletedIds.forEach(id => removeHistoryItemFromCurrentDevice(id, { rerenderIfEmpty: false }));
+                        const { cache } = ensureCurrentHistoryCache();
+                        if (cache.items.length === 0) {
+                            renderHistory([]);
+                        }
                         toggleSelectionMode(false);
 
                     } catch (error) {
