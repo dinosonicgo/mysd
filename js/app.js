@@ -200,6 +200,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const fixedPromptSetDefaultBtn = getById('fixed-prompt-set-default-btn');
     const fixedPromptSetDetailedBtn = getById('fixed-prompt-set-detailed-btn'); // [v1.1 新增]
     const fixedPromptClearBtn = getById('fixed-prompt-clear-btn'); // [v2.3 新增]
+    const cameraAngleToggleBtn = getById('camera-angle-toggle-btn');
+    const cameraAnglePanel = getById('camera-angle-panel');
+    const cameraAngleButtons = getById('camera-angle-buttons');
 
     // --- 元素選擇器 (模型下載) ---
     const downloadModelForm = getById('download-model-form');
@@ -508,6 +511,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     const DEFAULT_NEGATIVE_PROMPT_GURO = "(worst quality, bad quality:1.2), lowres, jpeg artifacts, glitch, cropped,\nmodern, recent, old, oldest, cartoon, graphic, text, painting, crayon, graphite, abstract, sketch,\nsignature, watermark, username, simple background";
     const DEFAULT_FIXED_PROMPT = "非常美麗的眼睛，完美傑作，8K，UHD，大光圈，最高畫質";
     const DETAILED_FIXED_PROMPT = "(非常美麗的臉:1.2)，(非常美麗的眼睛:1.2)，（傑作：1.2），（最高品質：1.2），（超精細細節：1.1），（8k：1.1），高解析度，超高解析度，令人難以置信的精細，複雜細節，銳利對焦，精細描繪，電影級光影，景深，散景";
+    const QUICK_CAMERA_ANGLES = [
+        { label: '正面', tag: 'front view', natural: 'front view' },
+        { label: '後方', tag: 'rear view', natural: 'rear view' },
+        { label: '左側', tag: 'from left side', natural: 'from the left side' },
+        { label: '右側', tag: 'from right side', natural: 'from the right side' },
+        { label: '上方', tag: 'from above', natural: 'from above' },
+        { label: '下方', tag: 'from below', natural: 'from below' },
+        { label: '俯視', tag: "bird's-eye view", natural: "bird's-eye view" },
+        { label: '仰視', tag: "worm's-eye view", natural: "worm's-eye view" },
+        { label: '斜角', tag: 'dutch angle', natural: 'dutch angle' },
+        { label: '肩後', tag: 'over-the-shoulder', natural: 'over-the-shoulder view' },
+        { label: '全景', tag: 'panoramic shot', natural: 'panoramic shot' },
+        { label: '遠景', tag: 'wide shot', natural: 'wide shot' },
+        { label: '中景', tag: 'medium shot', natural: 'medium shot' },
+        { label: '特寫', tag: 'close-up', natural: 'close-up shot' },
+        { label: '上半身', tag: 'upper body', natural: 'upper body shot' },
+        { label: '大腿以上', tag: 'cowboy shot', natural: 'cowboy shot' },
+        { label: '全身', tag: 'full body', natural: 'full body shot' }
+    ];
     // --- 預設提示詞常數 ---
 
     // 中文註釋：fetchWithUserContext函式開始
@@ -539,6 +561,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         const message = String(error.message || error);
         if (message.includes('Failed to fetch')) return '無法連線（可能是 DNS、CORS 或 Tunnel 已失效）';
         return message;
+    }
+
+    function appendUniquePromptSegment(segment) {
+        if (!comfyFormElements.positive_prompt || !segment) return;
+        const raw = comfyFormElements.positive_prompt.value || '';
+        const normalized = raw.replace(/，/g, ',').replace(/、/g, ',');
+        const segments = normalized.split(',').map(part => part.trim()).filter(Boolean);
+        const keySet = new Set(segments.map(part => part.toLowerCase()));
+        if (!keySet.has(segment.toLowerCase())) {
+            segments.push(segment);
+        }
+        comfyFormElements.positive_prompt.value = segments.join(', ');
+    }
+
+    function getQuickAnglePrompt(item) {
+        const architecture = (comfyFormElements.model_architecture || '').toLowerCase();
+        const naturalArchitectures = new Set(['zit', 'zib', 'z-image', 'qwen', 'flux']);
+        if (naturalArchitectures.has(architecture)) {
+            return item.natural || item.tag;
+        }
+        return item.tag;
+    }
+
+    function initializeQuickAngleButtons() {
+        if (!cameraAngleButtons) return;
+        cameraAngleButtons.innerHTML = '';
+        QUICK_CAMERA_ANGLES.forEach((item) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-outline-secondary';
+            btn.textContent = item.label;
+            btn.addEventListener('click', () => {
+                appendUniquePromptSegment(getQuickAnglePrompt(item));
+            });
+            cameraAngleButtons.appendChild(btn);
+        });
     }
 
     async function checkDeviceStatus(device) {
@@ -3541,6 +3599,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (confirm('確定要清空固定提示詞嗎？')) {
                     comfyFormElements.fixed_prompt.value = '';
                 }
+            });
+        }
+
+        initializeQuickAngleButtons();
+        if (cameraAngleToggleBtn && cameraAnglePanel) {
+            cameraAngleToggleBtn.addEventListener('click', () => {
+                cameraAnglePanel.classList.toggle('d-none');
             });
         }
 
