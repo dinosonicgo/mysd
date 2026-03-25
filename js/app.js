@@ -1153,6 +1153,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         comfyFormElements.denoise.value = (isImg2ImgMode || isControlNetMode) ? 0.75 : 1.0;
     }
 
+    function getIntInputValue(element, fallback) {
+        if (!element) return fallback;
+        const value = parseInt(element.value, 10);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    function getFloatInputValue(element, fallback) {
+        if (!element) return fallback;
+        const value = parseFloat(element.value);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    function setInputValueIfDefined(element, value) {
+        if (!element || value === null || value === undefined) return;
+        element.value = value;
+    }
+
     // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
         // [v18.18 修正] 獲取負面提示詞開關狀態
@@ -1170,11 +1187,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 由於後端 ClientSettings 模型可能未定義此欄位，我們暫時將其存入 localStorage 以便下次載入
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
-            seed: comfyFormElements.seed ? comfyFormElements.seed.value : 0,
+            seed: getIntInputValue(comfyFormElements.seed, 0),
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
-            batch_size: comfyFormElements.batch_size ? comfyFormElements.batch_size.value : 1,
-            steps: comfyFormElements.steps ? comfyFormElements.steps.value : 20,
-            cfg: comfyFormElements.cfg ? comfyFormElements.cfg.value : 8.0,
+            batch_size: getIntInputValue(comfyFormElements.batch_size, 1),
+            steps: getIntInputValue(comfyFormElements.steps, 20),
+            cfg: getFloatInputValue(comfyFormElements.cfg, 8.0),
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
             optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
@@ -1185,8 +1202,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
-            adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
-            denoise: comfyFormElements.denoise ? comfyFormElements.denoise.value : 1.0,
+            adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? getIntInputValue(comfyFormElements.adetailer_steps, null) : null,
+            denoise: getFloatInputValue(comfyFormElements.denoise, 1.0),
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded',
             // [v33.2] 翻譯模式
             translation_mode: comfyFormElements.translate_local_llm?.checked ? 'llm_local' :
@@ -1264,16 +1281,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.denoise.value = savedDenoise;
             }
 
-            if (settings.seed && comfyFormElements.seed) comfyFormElements.seed.value = settings.seed;
+            setInputValueIfDefined(comfyFormElements.seed, settings.seed);
             if (settings.seed_behavior && comfyFormElements.seed_behavior) {
                 comfyFormElements.seed_behavior.value = settings.seed_behavior;
                 comfyFormElements.seed_behavior.dispatchEvent(new Event('change'));
             }
-            if (settings.batch_size && comfyFormElements.batch_size) comfyFormElements.batch_size.value = settings.batch_size;
-            if (settings.steps && comfyFormElements.steps) comfyFormElements.steps.value = settings.steps;
-            if (settings.cfg && comfyFormElements.cfg) comfyFormElements.cfg.value = settings.cfg;
-            if (settings.sampler_name && comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = settings.sampler_name;
-            if (settings.scheduler && comfyFormElements.scheduler) comfyFormElements.scheduler.value = settings.scheduler;
+            setInputValueIfDefined(comfyFormElements.batch_size, settings.batch_size);
+            setInputValueIfDefined(comfyFormElements.steps, settings.steps);
+            setInputValueIfDefined(comfyFormElements.cfg, settings.cfg);
+            setInputValueIfDefined(comfyFormElements.sampler_name, settings.sampler_name);
+            setInputValueIfDefined(comfyFormElements.scheduler, settings.scheduler);
 
             if (typeof settings.optimize_positive === 'boolean') {
                 if (comfyFormElements.optimize_positive) {
@@ -2444,16 +2461,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             fixed_prompt: comfyFormElements.fixed_prompt ? comfyFormElements.fixed_prompt.value.trim() : '',
             fixed_prompt_position: comfyFormElements.fixed_prompt_prepend && comfyFormElements.fixed_prompt_prepend.checked ? 'prepend' : 'append',
             negative_prompt: (useNegativePrompt && comfyFormElements.negative_prompt) ? comfyFormElements.negative_prompt.value.trim() : '',
-            seed: comfyFormElements.seed ? parseInt(comfyFormElements.seed.value, 10) : 0,
-            steps: comfyFormElements.steps ? parseInt(comfyFormElements.steps.value, 10) : 20,
-            cfg: comfyFormElements.cfg ? parseFloat(comfyFormElements.cfg.value) : 8.0,
+            seed: getIntInputValue(comfyFormElements.seed, 0),
+            steps: getIntInputValue(comfyFormElements.steps, 20),
+            cfg: getFloatInputValue(comfyFormElements.cfg, 8.0),
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
             workflow_variant: comfyFormElements.workflow_variant ? comfyFormElements.workflow_variant.value : 'standard',
-            batch_size: comfyFormElements.batch_size ? parseInt(comfyFormElements.batch_size.value, 10) : 1,
+            batch_size: getIntInputValue(comfyFormElements.batch_size, 1),
             width: 1024,
             height: 1024,
-            denoise: comfyFormElements.denoise ? parseFloat(comfyFormElements.denoise.value) : 1.0,
+            denoise: getFloatInputValue(comfyFormElements.denoise, 1.0),
             source_image: img2imgState.source_image,
             inpaint_mask: img2imgState.inpaint_mask,
             optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
@@ -2465,11 +2482,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
-            adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? parseInt(comfyFormElements.adetailer_steps.value, 10) : null,
+            adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? getIntInputValue(comfyFormElements.adetailer_steps, null) : null,
             enable_controlnet: enableControlnetSwitch ? enableControlnetSwitch.checked : false,
             controlnet_model: controlnetModelSelect ? controlnetModelSelect.value : null,
             controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
-            controlnet_strength: controlnetStrengthSlider ? parseFloat(controlnetStrengthSlider.value) : 1.0,
+            controlnet_strength: controlnetStrengthSlider ? getFloatInputValue(controlnetStrengthSlider, 1.0) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
             vae: comfyFormElements.vae.value,
             // [v33.2] 翻譯模式: 'llm' | 'llm_local' | 'google' | 'none'
