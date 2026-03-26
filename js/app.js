@@ -86,6 +86,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let comfyHistoryGrid = getById('comfy-history-grid');
     const adetailerOptionsDiv = getById('adetailer-options');
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
+    const zimageTextEncoderInfo = getById('comfy-zimage-text-encoder-info');
+    const zimageTextEncoderName = getById('comfy-zimage-text-encoder-name');
 
     // --- 元素選擇器 (ComfyUI - 圖像輸入) ---
     const img2imgTab = getById('img2img-tab');
@@ -149,6 +151,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modalParams = {
         model: getById('modal-model'),
         vae: getById('modal-vae'),
+        zimage_text_encoder_container: getById('modal-zimage-text-encoder-container'),
+        zimage_text_encoder: getById('modal-zimage-text-encoder'),
         lora_list: getById('modal-lora-list'),
         img2img_info: getById('modal-img2img-info'),
         source_image: getById('modal-source-image'),
@@ -169,6 +173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         sampler_name: getById('modal-sampler-name'),
         scheduler: getById('modal-scheduler'),
         optimization_mode: getById('modal-optimization-mode'),
+        remove_prompt_weights: getById('modal-remove-prompt-weights'),
     };
 
     // --- 元素選擇器 (模型/LoRA 選擇 Modal) ---
@@ -1492,6 +1497,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (controlnetStrengthSlider) controlnetStrengthSlider.addEventListener('input', (e) => syncControlNetStrengthValues(e.target.value));
     if (controlnetStrengthNumber) controlnetStrengthNumber.addEventListener('input', (e) => syncControlNetStrengthValues(e.target.value));
 
+    function isZImageArchitecture(architecture) {
+        const arch = (architecture || '').toLowerCase();
+        return ['zit', 'zib', 'z-image'].includes(arch);
+    }
+
+    async function refreshZimageTextEncoderInfo() {
+        if (!zimageTextEncoderInfo || !zimageTextEncoderName) return;
+
+        if (!isZImageArchitecture(comfyFormElements.model_architecture)) {
+            zimageTextEncoderInfo.classList.add('d-none');
+            zimageTextEncoderName.textContent = '';
+            return;
+        }
+
+        try {
+            const response = await fetchWithUserContext('/api/comfyui/zimage_text_encoder');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            zimageTextEncoderName.textContent = data.clip_name || '未知';
+            zimageTextEncoderInfo.classList.remove('d-none');
+        } catch (error) {
+            zimageTextEncoderName.textContent = '無法取得';
+            zimageTextEncoderInfo.classList.remove('d-none');
+        }
+    }
+
     // 中文註釋：fetchAndPopulateCheckpoints函式開始
     // 函式功能：從後端獲取 Checkpoint 模型列表，為其分配架構標識，並填充到模型選擇介面中
     // v18.17 (ZIT 支援): [功能新增] 新增了對 Z-Image-Turbo (ZIT) 的前端識別邏輯。如果後端標記為 'zit'，前端也會同步該架構，以便觸發專屬的參數預設值。
@@ -1539,6 +1570,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (comfySelectedModelName) comfySelectedModelName.textContent = checkpoints[0].name.split(/[\\/]/).pop();
             }
             await updateLoraListForModel(comfyFormElements.model);
+            await refreshZimageTextEncoderInfo();
         } catch (error) {
             if (comfyStatusText) { comfyStatusText.textContent = `錯誤: ${error.message}。`; comfyStatusText.classList.add('text-danger'); }
         }
@@ -1804,6 +1836,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 切換模型時套用官方預設值，使用者可在UI中自由修改
             if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
             if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1;
+            if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'euler';
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
             // [v2.2] ZIT 模型不需要負面提示詞，自動關閉
@@ -1825,6 +1858,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 切換模型時套用官方預設值，使用者可在UI中自由修改
             if (comfyFormElements.steps) comfyFormElements.steps.value = 28;
             if (comfyFormElements.cfg) comfyFormElements.cfg.value = 4.0;
+            if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'euler';
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
             // ZIB 啟用負面提示詞（官方強烈推薦）
@@ -1875,6 +1909,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await updateLoraListForModel(newModel);
+        await refreshZimageTextEncoderInfo();
         // [v2.2] 更新 ControlNet 列表以匹配當前模型 (filtering)
         await fetchAndPopulateControlNetResources();
     }
@@ -2619,6 +2654,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 case 'item_generated':
                     const itemData = message.data;
                     const promptText = itemData.params?.positive_prompt || '';
+                    const generationWarning = itemData.params?.generation_warning || '';
 
                     if (promptText.includes("LOCAL_FALLBACK_USED:")) {
                         if (positivePromptWarning) {
@@ -2628,6 +2664,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } else if (promptText.includes("TRANSLATION_FAILED:")) {
                         if (positivePromptWarning) {
                             positivePromptWarning.textContent = '錯誤：提示詞翻譯失敗，請檢查後端日誌。';
+                            positivePromptWarning.style.display = 'block';
+                        }
+                    } else if (generationWarning) {
+                        if (positivePromptWarning) {
+                            positivePromptWarning.textContent = `警告：${generationWarning}`;
                             positivePromptWarning.style.display = 'block';
                         }
                     }
@@ -2681,7 +2722,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function pollQueueStatus() {
         try {
-            const response = await fetchWithUserContext('/api/comfyui/queue/status');
+            const query = trackedPromptId ? `?tracked_prompt_id=${encodeURIComponent(trackedPromptId)}` : '';
+            const response = await fetchWithUserContext(`/api/comfyui/queue/status${query}`);
             if (!response.ok) {
                 if (wasPreviouslyRunning) resetUI();
                 wasPreviouslyRunning = false;
@@ -2690,9 +2732,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const data = await response.json();
             if (data.is_running) {
                 wasPreviouslyRunning = true;
-                if (trackedPromptId !== data.prompt_id) setGeneratingState(data.prompt_id);
+                const activePromptId = trackedPromptId || data.prompt_id;
+                if (trackedPromptId !== activePromptId) {
+                    setGeneratingState(activePromptId);
+                } else if (activePromptId && (!comfyStatusWs || comfyStatusWs.readyState !== WebSocket.OPEN)) {
+                    connectStatusWebSocket(activePromptId);
+                }
             } else {
-                if (wasPreviouslyRunning) {
+                if (data.status === 'error' && trackedPromptId && data.prompt_id === trackedPromptId) {
+                    if (comfyStatusText) {
+                        comfyStatusText.textContent = `錯誤: ${data.error_message || '任務執行失敗。'}`;
+                        comfyStatusText.classList.add('text-danger');
+                    }
+                    resetUI();
+                } else if (data.is_complete || wasPreviouslyRunning) {
                     const newItems = await fetchHistory('newer');
                     resetUI();
                     if (newItems.length > 0) {
@@ -2751,6 +2804,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             modalParams.vae.textContent = '模型內建';
         }
 
+        if (params.zimage_text_encoder && modalParams.zimage_text_encoder && modalParams.zimage_text_encoder_container) {
+            modalParams.zimage_text_encoder.textContent = params.zimage_text_encoder;
+            modalParams.zimage_text_encoder_container.style.display = 'block';
+        } else if (modalParams.zimage_text_encoder_container) {
+            modalParams.zimage_text_encoder_container.style.display = 'none';
+        }
+
         modalParams.lora_list.innerHTML = '';
         if (params.loras && params.loras.length > 0) {
             const ul = document.createElement('ul');
@@ -2790,6 +2850,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         modalParams.optimization_mode.textContent = params.optimization_mode || '無';
+        if (modalParams.remove_prompt_weights) {
+            modalParams.remove_prompt_weights.textContent = params.remove_prompt_weights ? '是' : '否';
+        }
 
         const inputPrompt = item.is_video ? params.video_main_prompt : params.main_prompt;
         if (inputPrompt) {
@@ -3091,7 +3154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response.ok && result.task_id) {
                 statusDiv.innerHTML = `<div class="alert alert-info">${result.message}</div>`;
                 form.reset();
-                connectDownloadWebSocket(result.task_id, statusDiv);
+                connectDownloadWebSocket(result.task_id, statusDiv, submitBtn, "模型");
             } else {
                 throw new Error(result.detail || '提交失敗，未收到任務 ID。');
             }
@@ -3161,7 +3224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const taskId = result.task_id;
             const wsProtocol = activeDeviceUrl.startsWith('https:') ? 'wss:' : 'ws:';
             const wsHost = new URL(activeDeviceUrl).host;
-            const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/status/${taskId}`;
+            const wsUrl = `${wsProtocol}//${wsHost}/api/comfyui/ws/download/status/${taskId}`;
 
             const ws = new WebSocket(wsUrl);
 
@@ -3717,14 +3780,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                         break;
                     case 'complete':
                         messageContainer.innerHTML += `<div class="alert alert-success small p-2 mt-2"><strong>完成:</strong> ${data.message}</div>`;
-                        button.disabled = false;
-                        button.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${moduleName} 套件已就緒`;
+                        if (button) {
+                            button.disabled = false;
+                            button.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${moduleName} 套件已就緒`;
+                        }
+                        const genericSubmitBtn = document.getElementById('download-model-submit-btn');
+                        if (genericSubmitBtn) genericSubmitBtn.disabled = false;
+                        const genericSpinner = document.getElementById('download-model-spinner');
+                        if (genericSpinner) genericSpinner.style.display = 'none';
                         downloadWs.close();
                         break;
                     case 'error':
                         messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2"><strong>錯誤:</strong> ${data.message}</div>`;
-                        button.disabled = false;
-                        button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 下載失敗，請重試`;
+                        if (button) {
+                            button.disabled = false;
+                            button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 下載失敗，請重試`;
+                        }
+                        const errorSubmitBtn = document.getElementById('download-model-submit-btn');
+                        if (errorSubmitBtn) errorSubmitBtn.disabled = false;
+                        const errorSpinner = document.getElementById('download-model-spinner');
+                        if (errorSpinner) errorSpinner.style.display = 'none';
                         downloadWs.close();
                         break;
                 }
@@ -3733,8 +3808,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             downloadWs.onerror = (error) => {
                 console.error(`${moduleName} 下載 WebSocket 錯誤:`, error);
                 messageContainer.innerHTML += `<div class="alert alert-danger small p-2 mt-2">進度監聽連線失敗。</div>`;
-                button.disabled = false;
-                button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> 連線失敗，請重試`;
+                }
+                const wsErrorSubmitBtn = document.getElementById('download-model-submit-btn');
+                if (wsErrorSubmitBtn) wsErrorSubmitBtn.disabled = false;
+                const wsErrorSpinner = document.getElementById('download-model-spinner');
+                if (wsErrorSpinner) wsErrorSpinner.style.display = 'none';
             };
         }
         // 函式功能：建立 WebSocket 連線以接收套件的並行下載進度
