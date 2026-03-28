@@ -887,6 +887,11 @@
                                                     <label class="form-check-label"
                                                         for="comfy-remove-prompt-weights">移除權重</label>
                                                 </div>
+                                                <div class="d-inline-flex align-items-center ms-2">
+                                                    <label for="comfy-max-prompt-weight" class="form-label mb-0 me-2 small">權重上限</label>
+                                                    <input type="number" class="form-control form-control-sm" id="comfy-max-prompt-weight"
+                                                        min="0.1" max="3" step="0.05" value="1.2" style="width: 88px;">
+                                                </div>
                                             </fieldset>
                                             <button class="btn btn-sm btn-outline-info" type="button"
                                                 data-bs-toggle="modal" data-bs-target="#consult-ai-modal"
@@ -1900,7 +1905,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1774531091"></script>
+    <script src="js/app.js?v=1774658514"></script>
 </body>
 
 </html>

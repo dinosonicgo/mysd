@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         optimize_positive: getById('comfy-optimize-positive-checkbox'),
         ai_optimize: getById('comfy-ai-optimize-checkbox'),
         remove_prompt_weights: getById('comfy-remove-prompt-weights'),
+        max_prompt_weight: getById('comfy-max-prompt-weight'),
         ai_optimize_local_llm: getById('comfy-ai-optimize-local-llm'),
         translate_negative: getById('comfy-translate-negative-checkbox'),
         enable_adetailer: getById('comfy-enable-adetailer'),
@@ -1202,6 +1203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
             ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
             remove_prompt_weights: comfyFormElements.remove_prompt_weights ? comfyFormElements.remove_prompt_weights.checked : false,
+            max_prompt_weight: getFloatInputValue(comfyFormElements.max_prompt_weight, 1.2),
             use_local_llm_optimize: comfyFormElements.ai_optimize_local_llm ? comfyFormElements.ai_optimize_local_llm.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             enable_adetailer: comfyFormElements.enable_adetailer ? comfyFormElements.enable_adetailer.checked : false,
@@ -1309,6 +1311,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (typeof settings.remove_prompt_weights === 'boolean' && comfyFormElements.remove_prompt_weights) {
                 comfyFormElements.remove_prompt_weights.checked = settings.remove_prompt_weights;
             }
+            setInputValueIfDefined(comfyFormElements.max_prompt_weight, settings.max_prompt_weight);
             if (typeof settings.use_local_llm_optimize === 'boolean' && comfyFormElements.ai_optimize_local_llm) {
                 comfyFormElements.ai_optimize_local_llm.checked = settings.use_local_llm_optimize;
             }
@@ -2511,6 +2514,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             optimize_positive: comfyFormElements.optimize_positive ? comfyFormElements.optimize_positive.checked : false,
             ai_optimize: comfyFormElements.ai_optimize ? comfyFormElements.ai_optimize.checked : false,
             remove_prompt_weights: comfyFormElements.remove_prompt_weights ? comfyFormElements.remove_prompt_weights.checked : false,
+            max_prompt_weight: getFloatInputValue(comfyFormElements.max_prompt_weight, 1.2),
             use_local_llm_optimize: comfyFormElements.ai_optimize_local_llm ? comfyFormElements.ai_optimize_local_llm.checked : false,
             translate_negative: comfyFormElements.translate_negative ? comfyFormElements.translate_negative.checked : false,
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
@@ -4005,6 +4009,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         modelArch: comfyFormElements.model_architecture || 'sdxl',
                         fixedPrompt: comfyFormElements.fixed_prompt?.value || '',
                         fixedPromptPosition: comfyFormElements.fixed_prompt_prepend?.checked ? 'prepend' : 'append',
+                        maxPromptWeight: getFloatInputValue(comfyFormElements.max_prompt_weight, 1.2),
                         translationMode: comfyFormElements.translate_local_llm?.checked ? 'llm_local'
                             : comfyFormElements.translate_llm?.checked ? 'llm'
                             : comfyFormElements.translate_google?.checked ? 'google' : 'none',
