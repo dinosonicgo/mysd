@@ -944,6 +944,11 @@
                                             id="comfy-enable-adetailer">
                                         <label class="form-check-label" for="comfy-enable-adetailer">啟用臉部修復功能</label>
                                     </div>
+                                    <small class="form-text text-muted d-block mb-2">
+                                        <strong>ADetailer 是什麼：</strong>這是額外的第二段臉部細修功能。主流程先把整張圖生出來，再針對臉部局部重繪一次。<br>
+                                        <strong>適合什麼時候開：</strong>臉歪掉、眼睛不穩、表情不夠精緻、多人圖裡臉部品質不一致。<br>
+                                        <strong>沒開會怎樣：</strong>不影響主流程正常生圖，只是少了臉部補修這一步。
+                                    </small>
                                     <!-- ADetailer 選項區塊 -->
                                     <div id="adetailer-options">
                                         <div class="mb-2">
@@ -987,6 +992,9 @@
                                                 <select class="form-select form-select-sm" id="comfy-adetailer-scheduler"></select>
                                             </div>
                                         </div>
+                                        <small class="form-text text-muted d-block mt-2">
+                                            `步數` 決定臉部修補強度，`CFG` 決定提示詞約束力，`Denoise` 越高改動越大；採樣器與調度器可和主流程分開調。
+                                        </small>
                                     </div>
                                     <!-- ADetailer 選項區塊 -->
 
@@ -1122,6 +1130,11 @@
                                         <label class="form-check-label" for="comfy-enable-controlnet">啟用
                                             ControlNet</label>
                                     </div>
+                                    <small class="form-text text-muted d-block mb-2">
+                                        <strong>ControlNet 是什麼：</strong>這是額外的構圖/姿勢/邊線控制功能。它會參考你上傳的圖，限制主流程往指定結構靠近。<br>
+                                        <strong>適合什麼時候開：</strong>你想固定人物姿勢、視角、多人站位、構圖輪廓，或做比較穩的參考圖生圖。<br>
+                                        <strong>沒開會怎樣：</strong>模型會更自由，但姿勢和構圖遵循度會比較看運氣。
+                                    </small>
                                     <div id="controlnet-options-container" style="display: none;">
                                         <input type="file" id="controlnet-file-input"
                                             accept="image/png, image/jpeg, image/webp" style="display: none;">
@@ -1175,23 +1188,28 @@
                                                     min="0" max="1" step="0.01" value="1.0">
                                             </div>
                                         </div>
+                                        <small class="form-text text-muted d-block mt-2">
+                                            `開始比例 / 結束比例` 代表 ControlNet 影響主流程的時段；數值越高、區間越長，構圖越被鎖死。
+                                        </small>
                                     </div>
 
                                 </div>
 
                             </div>
 
-                            <hr>
-                            <h5><i class="bi bi-diagram-3"></i> 工作流模式</h5>
-                            <div class="mb-3">
-                                <label for="comfy-workflow-variant" class="form-label"><strong>生成工作流</strong></label>
-                                <select class="form-select" id="comfy-workflow-variant">
-                                    <option value="standard" selected>標準 ZIT / ZIB 工作流</option>
-                                    <option value="darkbeast_moody_special">DarkBeast / Moody 專用雙段工作流</option>
-                                </select>
-                                <small class="form-text text-muted d-block mt-1">
-                                    專用模式只會套用在 ZIT / ZIB 模型，方便你直接切換比較兩種輸出。
-                                </small>
+                            <div id="comfy-zimage-workflow-container" style="display: none;">
+                                <hr>
+                                <h5><i class="bi bi-diagram-3"></i> ZIT / ZIB 工作流模式</h5>
+                                <div class="mb-3">
+                                    <label for="comfy-workflow-variant" class="form-label"><strong>生成工作流</strong></label>
+                                    <select class="form-select" id="comfy-workflow-variant">
+                                        <option value="standard" selected>標準 ZIT / ZIB 工作流</option>
+                                        <option value="darkbeast_moody_special">DarkBeast / Moody 專用雙段工作流</option>
+                                    </select>
+                                    <small class="form-text text-muted d-block mt-1">
+                                        只在 ZIT / ZIB 模型顯示。這裡是切換 Z 系列工作流骨架，不是改提示詞強度。
+                                    </small>
+                                </div>
                             </div>
 
                             <div id="comfy-sdxl-advanced-container" style="display: none;">
@@ -1205,14 +1223,26 @@
                                         <option value="noob_vpred">NoobAI v-pred</option>
                                     </select>
                                     <small class="form-text text-muted d-block mt-1">
-                                        切換後只會帶入建議值，之後你仍可自由再改。SDXL LoRA 仍沿用上方現有 LoRA 選擇器。
+                                        切換後只會帶入建議值，之後你仍可自由再改。這個 preset 只會改主採樣、ADetailer 與 ControlNet 建議值，不會替你強制開啟所有功能。
                                     </small>
                                 </div>
+                                <div class="alert alert-secondary py-2 small" id="comfy-sdxl-preset-summary">
+                                    手動模式：不自動改任何值。
+                                </div>
+                                <small class="form-text text-muted d-block mb-2">
+                                    上面的摘要會告訴你 preset 實際改了哪些欄位；真正可手動調整的值仍然在本頁的主採樣、ADetailer、ControlNet、Refine / Hires Fix、Body Detailer 欄位裡。
+                                </small>
 
                                 <div class="form-check form-switch mb-2">
                                     <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-hires-fix">
                                     <label class="form-check-label" for="comfy-enable-hires-fix">啟用第二段 Refine / Hires Fix</label>
                                 </div>
+                                <small class="form-text text-muted d-block mb-2">
+                                    <strong>Refine / Hires Fix 是什麼：</strong>這是額外的第二段精修放大。主流程先出一張底圖，再放大並重採樣一次。<br>
+                                    <strong>適合什麼時候開：</strong>你想補細節、材質、線條、局部結構，或讓高解析圖更穩。<br>
+                                    <strong>沒開會怎樣：</strong>主流程仍然正常，但少了第二段補細節的機會。<br>
+                                    先用主流程出底圖，再放大並做第二次重採樣。用來補細節、材質、線條，不是單純放大。
+                                </small>
                                 <div id="hires-fix-options" style="display: none;">
                                     <div class="row g-2 mb-2">
                                         <div class="col-md-4">
@@ -1246,12 +1276,21 @@
                                             <select class="form-select form-select-sm" id="comfy-hires-scheduler"></select>
                                         </div>
                                     </div>
+                                    <small class="form-text text-muted d-block">
+                                        `倍率` 越高越吃資源；`第二段步數` 補細節；`第二段 CFG` 控制第二輪提示詞約束；`第二段 Denoise` 越高改動越大。
+                                    </small>
                                 </div>
 
                                 <div class="form-check form-switch mt-3 mb-2">
                                     <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-body-detailer">
                                     <label class="form-check-label" for="comfy-enable-body-detailer">啟用身體/NSFW 區域細修</label>
                                 </div>
+                                <small class="form-text text-muted d-block mb-2">
+                                    <strong>Body Detailer 是什麼：</strong>這是額外的第二個局部細修器，和 ADetailer 類似，但目標是身體或指定區域，不是只修臉。<br>
+                                    <strong>適合什麼時候開：</strong>複雜姿勢、多人互動、局部解剖不穩、想只強化身體某些區域。<br>
+                                    <strong>沒開會怎樣：</strong>主流程照常跑，只是不會再額外做身體區域補修。<br>
+                                    用第二個 detailer 專門修身體或局部區域。適合複雜姿勢、多人互動或局部細節不穩的情況。
+                                </small>
                                 <div id="body-detailer-options" style="display: none;">
                                     <div class="mb-2">
                                         <label for="comfy-body-detailer-positive-prompt" class="form-label small"><strong>身體區域專用提示詞</strong></label>
@@ -1290,6 +1329,9 @@
                                             <select class="form-select form-select-sm" id="comfy-body-detailer-scheduler"></select>
                                         </div>
                                     </div>
+                                    <small class="form-text text-muted d-block mt-2">
+                                        `偵測器` 決定抓哪種區域，`專用提示詞` 可只強化這段局部，`步數 / CFG / Denoise` 與 ADetailer 類似，但作用在身體區域。
+                                    </small>
                                 </div>
                             </div>
 
@@ -2061,7 +2103,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1774800712"></script>
+    <script src="js/app.js?v=1774825959"></script>
 </body>
 
 </html>

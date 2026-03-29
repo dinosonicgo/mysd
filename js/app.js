@@ -109,7 +109,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
     const zimageTextEncoderInfo = getById('comfy-zimage-text-encoder-info');
     const zimageTextEncoderName = getById('comfy-zimage-text-encoder-name');
+    const zimageWorkflowContainer = getById('comfy-zimage-workflow-container');
     const sdxlAdvancedContainer = getById('comfy-sdxl-advanced-container');
+    const sdxlPresetSummary = getById('comfy-sdxl-preset-summary');
     const hiresFixOptions = getById('hires-fix-options');
     const bodyDetailerOptions = getById('body-detailer-options');
 
@@ -1239,6 +1241,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         return architecture === 'sdxl' || architecture === 'pony';
     }
 
+    function isZImageArchitecture(architecture) {
+        return architecture === 'zit' || architecture === 'zib';
+    }
+
     function setSelectValueWithFallback(selectElement, preferredValues) {
         if (!selectElement) return;
         const values = Array.isArray(preferredValues) ? preferredValues : [preferredValues];
@@ -1257,13 +1263,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         return 'illustrious';
     }
 
-    function updateSdxlAdvancedVisibility() {
-        if (!sdxlAdvancedContainer) return;
-        sdxlAdvancedContainer.style.display = isSdxlFamilyArchitecture(comfyFormElements.model_architecture) ? 'block' : 'none';
+    function updateSdxlPresetSummary(preset = null) {
+        if (!sdxlPresetSummary) return;
+
+        const activePreset = preset || comfyFormElements.sdxl_family_preset?.value || 'manual';
+        const mainSteps = comfyFormElements.steps?.value || '未設定';
+        const mainCfg = comfyFormElements.cfg?.value || '未設定';
+        const mainSampler = comfyFormElements.sampler_name?.value || '未設定';
+        const mainScheduler = comfyFormElements.scheduler?.value || '未設定';
+        const adetailerCfg = comfyFormElements.adetailer_cfg?.value || '留空';
+        const adetailerDenoise = comfyFormElements.adetailer_denoise?.value || '留空';
+        const adetailerSampler = comfyFormElements.adetailer_sampler_name?.value || '留空';
+        const adetailerScheduler = comfyFormElements.adetailer_scheduler?.value || '留空';
+        const controlStrength = controlnetStrengthSlider?.value || '未設定';
+        const controlStart = controlnetStartPercentInput?.value || '未設定';
+        const controlEnd = controlnetEndPercentInput?.value || '未設定';
+
+        if (activePreset === 'manual') {
+            sdxlPresetSummary.innerHTML = `
+                <strong>手動模式：</strong>不會自動改任何值。<br>
+                目前主流程：<code>steps ${mainSteps}</code> / <code>cfg ${mainCfg}</code> / <code>${mainSampler}</code> / <code>${mainScheduler}</code><br>
+                目前 ADetailer：<code>cfg ${adetailerCfg}</code> / <code>denoise ${adetailerDenoise}</code> / <code>${adetailerSampler}</code> / <code>${adetailerScheduler}</code><br>
+                目前 ControlNet：<code>strength ${controlStrength}</code> / <code>start ${controlStart}</code> / <code>end ${controlEnd}</code>
+            `;
+            return;
+        }
+
+        const presetLabel = activePreset === 'noob_vpred' ? 'NoobAI v-pred' : 'Illustrious / 一般 SDXL';
+        const presetGoal = activePreset === 'noob_vpred'
+            ? '偏向 v-pred 模型的高遵循低 CFG 路線，避免把畫面推得過飽和。'
+            : '偏向 Illustrious / 一般 SDXL 的穩定高遵循路線，降低過高 CFG 帶來的死板和過飽和。';
+        sdxlPresetSummary.innerHTML = `
+            <strong>${presetLabel} 建議值：</strong>${presetGoal}<br>
+            主流程目前會用：<code>steps ${mainSteps}</code> / <code>cfg ${mainCfg}</code> / <code>${mainSampler}</code> / <code>${mainScheduler}</code><br>
+            ADetailer 目前會用：<code>cfg ${adetailerCfg}</code> / <code>denoise ${adetailerDenoise}</code> / <code>${adetailerSampler}</code> / <code>${adetailerScheduler}</code><br>
+            ControlNet 目前會用：<code>strength ${controlStrength}</code> / <code>start ${controlStart}</code> / <code>end ${controlEnd}</code>
+        `;
+    }
+
+    function updateArchitectureSpecificVisibility() {
+        if (sdxlAdvancedContainer) {
+            sdxlAdvancedContainer.style.display = isSdxlFamilyArchitecture(comfyFormElements.model_architecture) ? 'block' : 'none';
+        }
+        if (zimageWorkflowContainer) {
+            zimageWorkflowContainer.style.display = isZImageArchitecture(comfyFormElements.model_architecture) ? 'block' : 'none';
+        }
+        updateSdxlPresetSummary();
     }
 
     function applySdxlFamilyPreset(preset) {
-        if (!preset || preset === 'manual') return;
+        if (!preset || preset === 'manual') {
+            updateSdxlPresetSummary('manual');
+            return;
+        }
 
         const isNoobPreset = preset === 'noob_vpred';
         if (comfyFormElements.steps) comfyFormElements.steps.value = 28;
@@ -1300,6 +1352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? '已套用 NoobAI v-pred 建議值'
                 : '已套用 Illustrious / SDXL 建議值';
         }
+        updateSdxlPresetSummary(preset);
     }
 
     // 函式功能：將當前介面上的所有參數設定儲存到後端
@@ -1543,7 +1596,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }, 100); // 短暫延遲以等待異步填充完成
             }
 
-            updateSdxlAdvancedVisibility();
+            updateArchitectureSpecificVisibility();
 
         } catch (error) {
             console.error("載入設定失敗，將使用預設值:", error.message);
@@ -2148,23 +2201,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // [v33.3] 強制所有模型預設使用 LLM 翻譯 (優先 Groq，後備 Gemini / Gemma)
-        const localLlmSelected = comfyFormElements.translate_local_llm?.checked;
-        if (comfyFormElements.translate_llm && !localLlmSelected) {
+        // 保留使用者手動選擇的翻譯模式，只有在四個選項都沒勾時才回退預設。
+        const hasExplicitTranslationModeSelected = Boolean(
+            comfyFormElements.translate_local_llm?.checked ||
+            comfyFormElements.translate_llm?.checked ||
+            comfyFormElements.translate_google?.checked ||
+            comfyFormElements.translate_none?.checked
+        );
+        if (!hasExplicitTranslationModeSelected && comfyFormElements.translate_llm) {
             comfyFormElements.translate_llm.checked = true;
-            if (comfyFormElements.translate_local_llm) comfyFormElements.translate_local_llm.checked = false;
-            if (comfyFormElements.translate_google) comfyFormElements.translate_google.checked = false;
-            if (comfyFormElements.translate_none) comfyFormElements.translate_none.checked = false;
-            // 舊版相容
             if (comfyFormElements.enable_local_translation) comfyFormElements.enable_local_translation.checked = true;
-            console.log('翻譯模式已預設重置為 LLM（Groq 優先，後備 Gemini / Gemma）。');
+            console.log('翻譯模式未設定，已回退到 LLM 預設。');
         }
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await syncCloudZitSession(newArchitecture === 'cloud_zit');
         await updateLoraListForModel(newModel);
         await refreshZimageTextEncoderInfo();
-        updateSdxlAdvancedVisibility();
+        updateArchitectureSpecificVisibility();
         // [v2.2] 更新 ControlNet 列表以匹配當前模型 (filtering)
         await fetchAndPopulateControlNetResources();
     }
@@ -3775,7 +3829,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 applySdxlFamilyPreset(e.target.value);
             });
         }
-        updateSdxlAdvancedVisibility();
+        updateArchitectureSpecificVisibility();
+
+        [
+            comfyFormElements.steps,
+            comfyFormElements.cfg,
+            comfyFormElements.sampler_name,
+            comfyFormElements.scheduler,
+            comfyFormElements.adetailer_cfg,
+            comfyFormElements.adetailer_denoise,
+            comfyFormElements.adetailer_sampler_name,
+            comfyFormElements.adetailer_scheduler,
+            controlnetStrengthSlider,
+            controlnetStrengthNumber,
+            controlnetStartPercentInput,
+            controlnetEndPercentInput
+        ].filter(Boolean).forEach((element) => {
+            const eventName = element.tagName === 'SELECT' ? 'change' : 'input';
+            element.addEventListener(eventName, () => updateSdxlPresetSummary());
+            if (eventName !== 'change') {
+                element.addEventListener('change', () => updateSdxlPresetSummary());
+            }
+        });
 
         if (comfyFormElements.optimize_positive && comfyFormElements.ai_optimize) {
             const syncOptimizeControls = (isEnabled) => {
