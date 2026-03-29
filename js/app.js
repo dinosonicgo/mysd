@@ -258,6 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let clientId = '';
     let deviceHistoryCache = {};
     let currentHistoryObserver = null;
+    const CLOUD_OFFICIAL_ZIT_MODEL_NAME = '[雲端官方] ZIT (abao.ai)';
 
     function getCurrentHistoryDeviceId() {
         return userContext.user_type === 'gm'
@@ -1365,6 +1366,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
         if (!loraSelectionGrid) return;
+        if (comfyFormElements.model_architecture === 'cloud_zit' || modelName === CLOUD_OFFICIAL_ZIT_MODEL_NAME) {
+            loraSelectionGrid.innerHTML = '<p class="text-muted">雲端官方 ZIT 不支援 LoRA。</p>';
+            return;
+        }
         loraSelectionGrid.innerHTML = '<p class="text-muted">正在載入 LoRA 列表...</p>';
 
         const noFilterCheckbox = document.getElementById('lora-no-filter-checkbox');
@@ -1546,7 +1551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
                 // [v18.18 修正] 新增 zib 架構保留
-                if (model.architecture === 'zit' || model.architecture === 'zib') {
+                if (model.architecture === 'zit' || model.architecture === 'zib' || model.architecture === 'cloud_zit') {
                     // Do nothing, keep 'zit' / 'zib'
                 } else if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
@@ -1727,32 +1732,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         title.className = 'model-card-title';
         title.textContent = item.name.split(/[\\/]/).pop();
 
-        // [v33.0] 添加模型管理按鈕區域
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'model-card-actions';
+        if (item.is_virtual) {
+            const badge = document.createElement('div');
+            badge.className = 'small text-info mt-1';
+            badge.textContent = '雲端';
+            card.append(imgContainer, title, badge);
+        } else {
+            // [v33.0] 添加模型管理按鈕區域
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'model-card-actions';
 
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'btn btn-sm btn-outline-light';
-        renameBtn.innerHTML = '<i class="bi bi-pencil"></i>';
-        renameBtn.title = '重命名';
-        renameBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openRenameModal(item.name, type === 'model' ? 'checkpoint' : 'lora');
-        });
+            const renameBtn = document.createElement('button');
+            renameBtn.className = 'btn btn-sm btn-outline-light';
+            renameBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+            renameBtn.title = '重命名';
+            renameBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openRenameModal(item.name, type === 'model' ? 'checkpoint' : 'lora');
+            });
 
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'btn btn-sm btn-outline-danger';
-        deleteBtn.innerHTML = '<i class="bi bi-trash3"></i>';
-        deleteBtn.title = '刪除';
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openDeleteModal(item.name, type === 'model' ? 'checkpoint' : 'lora');
-        });
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-sm btn-outline-danger';
+            deleteBtn.innerHTML = '<i class="bi bi-trash3"></i>';
+            deleteBtn.title = '刪除';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openDeleteModal(item.name, type === 'model' ? 'checkpoint' : 'lora');
+            });
 
-        actionsDiv.appendChild(renameBtn);
-        actionsDiv.appendChild(deleteBtn);
-
-        card.append(imgContainer, title, actionsDiv);
+            actionsDiv.appendChild(renameBtn);
+            actionsDiv.appendChild(deleteBtn);
+            card.append(imgContainer, title, actionsDiv);
+        }
 
         if (type === 'model') {
             card.addEventListener('click', (e) => {
@@ -1813,6 +1824,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         const isZITModel = newArchitecture === 'zit';
         const isZIBModel = newArchitecture === 'zib';
+        const isCloudZitModel = newArchitecture === 'cloud_zit';
 
         if (isQwenModel) {
             // Qwen 模型特殊處理
@@ -1830,6 +1842,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             console.log('Qwen 模式已啟用，已自動選擇 Qwen 專用 VAE。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
+        } else if (isCloudZitModel) {
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'model_embedded';
+            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
+            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1;
+            if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'euler';
+            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
+            comfyFormElements.loras = [];
+            renderSelectedLoras();
+
+            const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
+            if (useNegativePromptCheckbox) {
+                useNegativePromptCheckbox.checked = false;
+                localStorage.setItem('comfy_use_negative_prompt', 'false');
+            }
+
+            console.log('雲端官方 ZIT 模式已啟用，將改走 abao.ai 自動生成並下載回本地。');
+            if (comfyStatusText) comfyStatusText.textContent = '雲端官方 ZIT 模式已啟用';
+
         } else if (isZITModel) {
             // [v2.1] ZIT 模型特殊處理
             // [v36.0] 官方 Z-Image 推薦: steps=8, cfg=0 (DMD distilled 模型不使用 CFG)
@@ -2536,34 +2566,58 @@ document.addEventListener('DOMContentLoaded', async () => {
             enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_local_llm?.checked || comfyFormElements.translate_google?.checked
         };
 
-        // --- 進度條總步數預算 ---
-        const mainSteps = payload.steps;
-        const batchSize = payload.batch_size;
+        const isCloudOfficialZit = payload.model_architecture === 'cloud_zit' || payload.model === CLOUD_OFFICIAL_ZIT_MODEL_NAME;
+        if (isCloudOfficialZit) {
+            const unsupported = [];
+            if (payload.source_image || payload.inpaint_mask) unsupported.push('圖生圖/局部修圖');
+            if (Array.isArray(payload.loras) && payload.loras.length > 0) unsupported.push('LoRA');
+            if (payload.enable_controlnet) unsupported.push('ControlNet');
+            if (payload.enable_adetailer) unsupported.push('ADetailer');
+            if (payload.batch_size > 1) unsupported.push('批量生成');
 
-        // 1. ADetailer 步數
-        const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
-
-        // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
-        // 假設分塊大小 512，重疊 64，有效步進約 448。
-        // 這只是一個估算值，目的是讓進度條不要太早跑完。
-        const tilesX = Math.ceil(payload.width / 448);
-        const tilesY = Math.ceil(payload.height / 448);
-        const estimatedTilesPerImage = tilesX * tilesY;
-        const estimatedVaeSteps = estimatedTilesPerImage * batchSize;
-
-        // 計算總步數
-        totalExpectedSteps = mainSteps; // KSampler 主生成
-        totalExpectedSteps += adetailerSteps; // ADetailer
-
-        // 加上 VAE 解碼 (所有模式都會發生)
-        totalExpectedSteps += estimatedVaeSteps;
-
-        // 如果是「以圖生圖」，還會有 VAE 編碼
-        if (payload.source_image) {
-            totalExpectedSteps += estimatedVaeSteps;
+            if (unsupported.length > 0) {
+                if (comfyStatusText) {
+                    comfyStatusText.textContent = `錯誤:\n雲端官方 ZIT 目前不支援 ${unsupported.join('、')}`;
+                    comfyStatusText.classList.add('text-danger');
+                }
+                resetUI();
+                return;
+            }
         }
 
-        console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
+        // --- 進度條總步數預算 ---
+        if (isCloudOfficialZit) {
+            totalExpectedSteps = 4;
+            console.log('[進度條預算] 雲端官方 ZIT 使用固定 4 階段進度。');
+        } else {
+            const mainSteps = payload.steps;
+            const batchSize = payload.batch_size;
+
+            // 1. ADetailer 步數
+            const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
+
+            // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
+            // 假設分塊大小 512，重疊 64，有效步進約 448。
+            // 這只是一個估算值，目的是讓進度條不要太早跑完。
+            const tilesX = Math.ceil(payload.width / 448);
+            const tilesY = Math.ceil(payload.height / 448);
+            const estimatedTilesPerImage = tilesX * tilesY;
+            const estimatedVaeSteps = estimatedTilesPerImage * batchSize;
+
+            // 計算總步數
+            totalExpectedSteps = mainSteps; // KSampler 主生成
+            totalExpectedSteps += adetailerSteps; // ADetailer
+
+            // 加上 VAE 解碼 (所有模式都會發生)
+            totalExpectedSteps += estimatedVaeSteps;
+
+            // 如果是「以圖生圖」，還會有 VAE 編碼
+            if (payload.source_image) {
+                totalExpectedSteps += estimatedVaeSteps;
+            }
+
+            console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
+        }
 
         try {
             const response = await fetchWithUserContext('/api/comfyui/generate', {
