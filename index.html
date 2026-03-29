@@ -965,6 +965,28 @@
                                             <input type="number" class="form-control form-control-sm"
                                                 id="comfy-adetailer-steps" min="1" placeholder="留空則使用主流程步數">
                                         </div>
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-md-6">
+                                                <label for="comfy-adetailer-cfg" class="form-label small"><strong>臉部修復 CFG</strong></label>
+                                                <input type="number" class="form-control form-control-sm"
+                                                    id="comfy-adetailer-cfg" step="0.1" min="0" placeholder="留空則使用主流程 CFG">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="comfy-adetailer-denoise" class="form-label small"><strong>臉部修復 Denoise</strong></label>
+                                                <input type="number" class="form-control form-control-sm"
+                                                    id="comfy-adetailer-denoise" step="0.01" min="0" max="1" placeholder="留空則使用節點預設">
+                                            </div>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <label for="comfy-adetailer-sampler-name" class="form-label small"><strong>臉部修復採樣器</strong></label>
+                                                <select class="form-select form-select-sm" id="comfy-adetailer-sampler-name"></select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="comfy-adetailer-scheduler" class="form-label small"><strong>臉部修復調度器</strong></label>
+                                                <select class="form-select form-select-sm" id="comfy-adetailer-scheduler"></select>
+                                            </div>
+                                        </div>
                                     </div>
                                     <!-- ADetailer 選項區塊 -->
 
@@ -1141,6 +1163,18 @@
                                                     value="1.0" style="width: 80px;">
                                             </div>
                                         </div>
+                                        <div class="row g-2">
+                                            <div class="col-md-6">
+                                                <label for="comfy-controlnet-start-percent" class="form-label"><strong>開始比例</strong></label>
+                                                <input type="number" class="form-control" id="comfy-controlnet-start-percent"
+                                                    min="0" max="1" step="0.01" value="0.0">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="comfy-controlnet-end-percent" class="form-label"><strong>結束比例</strong></label>
+                                                <input type="number" class="form-control" id="comfy-controlnet-end-percent"
+                                                    min="0" max="1" step="0.01" value="1.0">
+                                            </div>
+                                        </div>
                                     </div>
 
                                 </div>
@@ -1158,6 +1192,105 @@
                                 <small class="form-text text-muted d-block mt-1">
                                     專用模式只會套用在 ZIT / ZIB 模型，方便你直接切換比較兩種輸出。
                                 </small>
+                            </div>
+
+                            <div id="comfy-sdxl-advanced-container" style="display: none;">
+                                <hr>
+                                <h5><i class="bi bi-stars"></i> SDXL 高遵循設定</h5>
+                                <div class="mb-3">
+                                    <label for="comfy-sdxl-family-preset" class="form-label"><strong>模型家族建議值</strong></label>
+                                    <select class="form-select" id="comfy-sdxl-family-preset">
+                                        <option value="manual">手動（不套建議值）</option>
+                                        <option value="illustrious">Illustrious / 一般 SDXL</option>
+                                        <option value="noob_vpred">NoobAI v-pred</option>
+                                    </select>
+                                    <small class="form-text text-muted d-block mt-1">
+                                        切換後只會帶入建議值，之後你仍可自由再改。SDXL LoRA 仍沿用上方現有 LoRA 選擇器。
+                                    </small>
+                                </div>
+
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-hires-fix">
+                                    <label class="form-check-label" for="comfy-enable-hires-fix">啟用第二段 Refine / Hires Fix</label>
+                                </div>
+                                <div id="hires-fix-options" style="display: none;">
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-md-4">
+                                            <label for="comfy-hires-scale" class="form-label small"><strong>放大倍率</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-hires-scale"
+                                                min="1.0" max="4.0" step="0.05" value="1.5">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="comfy-hires-steps" class="form-label small"><strong>第二段步數</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-hires-steps"
+                                                min="1" placeholder="留空則自動估算">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="comfy-hires-cfg" class="form-label small"><strong>第二段 CFG</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-hires-cfg"
+                                                step="0.1" min="0" placeholder="留空則沿用主流程">
+                                        </div>
+                                    </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-md-4">
+                                            <label for="comfy-hires-denoise" class="form-label small"><strong>第二段 Denoise</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-hires-denoise"
+                                                min="0" max="1" step="0.01" value="0.5">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="comfy-hires-sampler-name" class="form-label small"><strong>第二段採樣器</strong></label>
+                                            <select class="form-select form-select-sm" id="comfy-hires-sampler-name"></select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label for="comfy-hires-scheduler" class="form-label small"><strong>第二段調度器</strong></label>
+                                            <select class="form-select form-select-sm" id="comfy-hires-scheduler"></select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-check form-switch mt-3 mb-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-body-detailer">
+                                    <label class="form-check-label" for="comfy-enable-body-detailer">啟用身體/NSFW 區域細修</label>
+                                </div>
+                                <div id="body-detailer-options" style="display: none;">
+                                    <div class="mb-2">
+                                        <label for="comfy-body-detailer-positive-prompt" class="form-label small"><strong>身體區域專用提示詞</strong></label>
+                                        <textarea class="form-control form-control-sm" id="comfy-body-detailer-positive-prompt"
+                                            rows="2" placeholder="留空則沿用最終正面提示詞"></textarea>
+                                    </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-md-3">
+                                            <label for="comfy-body-detailer-steps" class="form-label small"><strong>步數</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-body-detailer-steps"
+                                                min="1" placeholder="留空則自動估算">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="comfy-body-detailer-cfg" class="form-label small"><strong>CFG</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-body-detailer-cfg"
+                                                step="0.1" min="0" placeholder="留空則沿用主流程">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="comfy-body-detailer-denoise" class="form-label small"><strong>Denoise</strong></label>
+                                            <input type="number" class="form-control form-control-sm" id="comfy-body-detailer-denoise"
+                                                min="0" max="1" step="0.01" value="0.7">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="comfy-body-detailer-detector-model" class="form-label small"><strong>偵測器</strong></label>
+                                            <input type="text" class="form-control form-control-sm" id="comfy-body-detailer-detector-model"
+                                                value="segm/person_yolov8m-seg.pt">
+                                        </div>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-md-6">
+                                            <label for="comfy-body-detailer-sampler-name" class="form-label small"><strong>採樣器</strong></label>
+                                            <select class="form-select form-select-sm" id="comfy-body-detailer-sampler-name"></select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="comfy-body-detailer-scheduler" class="form-label small"><strong>調度器</strong></label>
+                                            <select class="form-select form-select-sm" id="comfy-body-detailer-scheduler"></select>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <hr>
@@ -1571,7 +1704,30 @@
                         <div class="param-label">ControlNet</div>
                         <p class="param-value mb-1">模型: <span id="modal-controlnet-model"></span></p>
                         <p class="param-value mb-1">預處理器: <span id="modal-controlnet-preprocessor"></span></p>
-                        <p class="param-value mb-0">強度: <span id="modal-controlnet-strength"></span></p>
+                        <p class="param-value mb-1">強度: <span id="modal-controlnet-strength"></span></p>
+                        <p class="param-value mb-0">區間: <span id="modal-controlnet-range"></span></p>
+                    </div>
+                    <div class="param-group" id="modal-adetailer-info" style="display: none;">
+                        <div class="param-label">ADetailer</div>
+                        <p class="param-value mb-1">步數 / CFG: <span id="modal-adetailer-steps-cfg"></span></p>
+                        <p class="param-value mb-1">採樣 / 調度: <span id="modal-adetailer-sampler-scheduler"></span></p>
+                        <p class="param-value mb-0">Denoise: <span id="modal-adetailer-denoise"></span></p>
+                    </div>
+                    <div class="param-group" id="modal-hires-info" style="display: none;">
+                        <div class="param-label">Hires Fix / Refine</div>
+                        <p class="param-value mb-1">倍率 / Denoise: <span id="modal-hires-scale-denoise"></span></p>
+                        <p class="param-value mb-1">步數 / CFG: <span id="modal-hires-steps-cfg"></span></p>
+                        <p class="param-value mb-0">採樣 / 調度: <span id="modal-hires-sampler-scheduler"></span></p>
+                    </div>
+                    <div class="param-group" id="modal-body-detailer-info" style="display: none;">
+                        <div class="param-label">Body Detailer</div>
+                        <p class="param-value mb-1">偵測器: <span id="modal-body-detailer-detector"></span></p>
+                        <p class="param-value mb-1">步數 / CFG / Denoise: <span id="modal-body-detailer-steps-cfg-denoise"></span></p>
+                        <p class="param-value mb-0">採樣 / 調度: <span id="modal-body-detailer-sampler-scheduler"></span></p>
+                    </div>
+                    <div class="param-group" id="modal-sdxl-preset-info" style="display: none;">
+                        <div class="param-label">SDXL 家族建議值</div>
+                        <p class="param-value" id="modal-sdxl-preset"></p>
                     </div>
 
                     <div class="param-group">
@@ -1905,7 +2061,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1774749219"></script>
+    <script src="js/app.js?v=1774800712"></script>
 </body>
 
 </html>

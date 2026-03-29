@@ -67,8 +67,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         adetailer_positive_prompt: getById('comfy-adetailer-positive-prompt'),
         translate_adetailer_positive: getById('comfy-translate-adetailer-positive-checkbox'),
         adetailer_steps: getById('comfy-adetailer-steps'),
+        adetailer_cfg: getById('comfy-adetailer-cfg'),
+        adetailer_sampler_name: getById('comfy-adetailer-sampler-name'),
+        adetailer_scheduler: getById('comfy-adetailer-scheduler'),
+        adetailer_denoise: getById('comfy-adetailer-denoise'),
         denoise: getById('comfy-denoise'),
         vae: getById('comfy-vae-select'),
+        sdxl_family_preset: getById('comfy-sdxl-family-preset'),
+        enable_hires_fix: getById('comfy-enable-hires-fix'),
+        hires_scale: getById('comfy-hires-scale'),
+        hires_steps: getById('comfy-hires-steps'),
+        hires_cfg: getById('comfy-hires-cfg'),
+        hires_sampler_name: getById('comfy-hires-sampler-name'),
+        hires_scheduler: getById('comfy-hires-scheduler'),
+        hires_denoise: getById('comfy-hires-denoise'),
+        enable_body_detailer: getById('comfy-enable-body-detailer'),
+        body_detailer_positive_prompt: getById('comfy-body-detailer-positive-prompt'),
+        body_detailer_steps: getById('comfy-body-detailer-steps'),
+        body_detailer_cfg: getById('comfy-body-detailer-cfg'),
+        body_detailer_sampler_name: getById('comfy-body-detailer-sampler-name'),
+        body_detailer_scheduler: getById('comfy-body-detailer-scheduler'),
+        body_detailer_denoise: getById('comfy-body-detailer-denoise'),
+        body_detailer_detector_model: getById('comfy-body-detailer-detector-model'),
         enable_local_translation: getById('comfy-enable-local-translation'), // 保留相容性
         // [v33.2] 新增翻譯模式 radio 選項
         translate_llm: getById('comfy-translate-llm'),
@@ -89,6 +109,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const positivePromptWarning = getById('comfy-positive-prompt-warning');
     const zimageTextEncoderInfo = getById('comfy-zimage-text-encoder-info');
     const zimageTextEncoderName = getById('comfy-zimage-text-encoder-name');
+    const sdxlAdvancedContainer = getById('comfy-sdxl-advanced-container');
+    const hiresFixOptions = getById('hires-fix-options');
+    const bodyDetailerOptions = getById('body-detailer-options');
 
     // --- 元素選擇器 (ComfyUI - 圖像輸入) ---
     const img2imgTab = getById('img2img-tab');
@@ -132,6 +155,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const controlnetPreprocessorSelect = getById('comfy-controlnet-preprocessor');
     const controlnetStrengthSlider = getById('comfy-controlnet-strength');
     const controlnetStrengthNumber = getById('comfy-controlnet-strength-number');
+    const controlnetStartPercentInput = getById('comfy-controlnet-start-percent');
+    const controlnetEndPercentInput = getById('comfy-controlnet-end-percent');
 
 
 
@@ -162,6 +187,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         controlnet_model: getById('modal-controlnet-model'),
         controlnet_preprocessor: getById('modal-controlnet-preprocessor'),
         controlnet_strength: getById('modal-controlnet-strength'),
+        controlnet_range: getById('modal-controlnet-range'),
+        adetailer_info: getById('modal-adetailer-info'),
+        adetailer_steps_cfg: getById('modal-adetailer-steps-cfg'),
+        adetailer_sampler_scheduler: getById('modal-adetailer-sampler-scheduler'),
+        adetailer_denoise: getById('modal-adetailer-denoise'),
+        hires_info: getById('modal-hires-info'),
+        hires_scale_denoise: getById('modal-hires-scale-denoise'),
+        hires_steps_cfg: getById('modal-hires-steps-cfg'),
+        hires_sampler_scheduler: getById('modal-hires-sampler-scheduler'),
+        body_detailer_info: getById('modal-body-detailer-info'),
+        body_detailer_detector: getById('modal-body-detailer-detector'),
+        body_detailer_steps_cfg_denoise: getById('modal-body-detailer-steps-cfg-denoise'),
+        body_detailer_sampler_scheduler: getById('modal-body-detailer-sampler-scheduler'),
+        sdxl_preset_info: getById('modal-sdxl-preset-info'),
+        sdxl_preset: getById('modal-sdxl-preset'),
         input_prompt_container: getById('modal-input-prompt-container'),
         input_prompt: getById('modal-input-prompt'),
         fixed_prompt_container: getById('modal-fixed-prompt-container'),
@@ -259,6 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let deviceHistoryCache = {};
     let currentHistoryObserver = null;
     const CLOUD_OFFICIAL_ZIT_MODEL_NAME = '[雲端官方] ZIT (abao.ai)';
+    let cloudZitSessionDesired = false;
 
     function getCurrentHistoryDeviceId() {
         return userContext.user_type === 'gm'
@@ -272,6 +313,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             deviceHistoryCache[deviceId] = { items: [], hasMore: true };
         }
         return { deviceId, cache: deviceHistoryCache[deviceId] };
+    }
+
+    async function syncCloudZitSession(shouldKeepOpen) {
+        if (cloudZitSessionDesired === shouldKeepOpen) return;
+        cloudZitSessionDesired = shouldKeepOpen;
+        const endpoint = shouldKeepOpen
+            ? '/api/comfyui/cloud_zit/session/ensure'
+            : '/api/comfyui/cloud_zit/session/shutdown';
+        try {
+            await fetchWithUserContext(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (error) {
+            console.warn(`同步雲端 ZIT 會話失敗 (${shouldKeepOpen ? 'ensure' : 'shutdown'}):`, error);
+        }
     }
 
     function removeHistoryItemElement(element) {
@@ -775,6 +832,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ]);
 
         await loadSettings();
+        await syncCloudZitSession(comfyFormElements.model_architecture === 'cloud_zit' || comfyFormElements.model === CLOUD_OFFICIAL_ZIT_MODEL_NAME);
 
         await initializeHistory();
 
@@ -1177,6 +1235,73 @@ document.addEventListener('DOMContentLoaded', async () => {
         element.value = value;
     }
 
+    function isSdxlFamilyArchitecture(architecture) {
+        return architecture === 'sdxl' || architecture === 'pony';
+    }
+
+    function setSelectValueWithFallback(selectElement, preferredValues) {
+        if (!selectElement) return;
+        const values = Array.isArray(preferredValues) ? preferredValues : [preferredValues];
+        const options = Array.from(selectElement.options).map(opt => opt.value);
+        const match = values.find(value => options.includes(value));
+        if (match) {
+            selectElement.value = match;
+        }
+    }
+
+    function inferSdxlPresetFromModelName(modelName) {
+        const lower = (modelName || '').toLowerCase();
+        if (lower.includes('noob') || lower.includes('vpred')) {
+            return 'noob_vpred';
+        }
+        return 'illustrious';
+    }
+
+    function updateSdxlAdvancedVisibility() {
+        if (!sdxlAdvancedContainer) return;
+        sdxlAdvancedContainer.style.display = isSdxlFamilyArchitecture(comfyFormElements.model_architecture) ? 'block' : 'none';
+    }
+
+    function applySdxlFamilyPreset(preset) {
+        if (!preset || preset === 'manual') return;
+
+        const isNoobPreset = preset === 'noob_vpred';
+        if (comfyFormElements.steps) comfyFormElements.steps.value = 28;
+        if (comfyFormElements.cfg) comfyFormElements.cfg.value = isNoobPreset ? 1.35 : 5.5;
+        setSelectValueWithFallback(
+            comfyFormElements.sampler_name,
+            isNoobPreset ? ['euler_cfg_pp', 'euler_ancestral', 'euler'] : ['euler_ancestral', 'euler']
+        );
+        setSelectValueWithFallback(comfyFormElements.scheduler, ['karras', 'normal']);
+
+        if (comfyFormElements.adetailer_cfg) comfyFormElements.adetailer_cfg.value = isNoobPreset ? 1.35 : 5.0;
+        if (comfyFormElements.adetailer_denoise) comfyFormElements.adetailer_denoise.value = 0.45;
+        if (comfyFormElements.adetailer_steps && !comfyFormElements.adetailer_steps.value) comfyFormElements.adetailer_steps.value = 18;
+        setSelectValueWithFallback(
+            comfyFormElements.adetailer_sampler_name,
+            isNoobPreset ? ['euler_cfg_pp', 'euler_ancestral', 'euler'] : ['euler_ancestral', 'euler']
+        );
+        setSelectValueWithFallback(comfyFormElements.adetailer_scheduler, ['karras', 'normal']);
+
+        if (controlnetStrengthSlider) controlnetStrengthSlider.value = 0.65;
+        if (controlnetStrengthNumber) controlnetStrengthNumber.value = 0.65;
+        if (controlnetStartPercentInput) controlnetStartPercentInput.value = 0.0;
+        if (controlnetEndPercentInput) controlnetEndPercentInput.value = 0.75;
+
+        if (comfyFormElements.hires_scale && !comfyFormElements.hires_scale.value) comfyFormElements.hires_scale.value = 1.5;
+        if (comfyFormElements.hires_denoise) comfyFormElements.hires_denoise.value = 0.5;
+        if (comfyFormElements.body_detailer_denoise) comfyFormElements.body_detailer_denoise.value = 0.7;
+        if (comfyFormElements.body_detailer_detector_model && !comfyFormElements.body_detailer_detector_model.value) {
+            comfyFormElements.body_detailer_detector_model.value = 'segm/person_yolov8m-seg.pt';
+        }
+
+        if (comfyStatusText) {
+            comfyStatusText.textContent = isNoobPreset
+                ? '已套用 NoobAI v-pred 建議值'
+                : '已套用 Illustrious / SDXL 建議值';
+        }
+    }
+
     // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
         // [v18.18 修正] 獲取負面提示詞開關狀態
@@ -1211,8 +1336,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
             adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? getIntInputValue(comfyFormElements.adetailer_steps, null) : null,
+            adetailer_cfg: comfyFormElements.adetailer_cfg && comfyFormElements.adetailer_cfg.value ? getFloatInputValue(comfyFormElements.adetailer_cfg, null) : null,
+            adetailer_sampler_name: comfyFormElements.adetailer_sampler_name ? comfyFormElements.adetailer_sampler_name.value : null,
+            adetailer_scheduler: comfyFormElements.adetailer_scheduler ? comfyFormElements.adetailer_scheduler.value : null,
+            adetailer_denoise: comfyFormElements.adetailer_denoise && comfyFormElements.adetailer_denoise.value ? getFloatInputValue(comfyFormElements.adetailer_denoise, null) : null,
+            sdxl_family_preset: comfyFormElements.sdxl_family_preset ? comfyFormElements.sdxl_family_preset.value : 'manual',
+            enable_hires_fix: comfyFormElements.enable_hires_fix ? comfyFormElements.enable_hires_fix.checked : false,
+            hires_scale: getFloatInputValue(comfyFormElements.hires_scale, 1.5),
+            hires_steps: comfyFormElements.hires_steps && comfyFormElements.hires_steps.value ? getIntInputValue(comfyFormElements.hires_steps, null) : null,
+            hires_cfg: comfyFormElements.hires_cfg && comfyFormElements.hires_cfg.value ? getFloatInputValue(comfyFormElements.hires_cfg, null) : null,
+            hires_sampler_name: comfyFormElements.hires_sampler_name ? comfyFormElements.hires_sampler_name.value : null,
+            hires_scheduler: comfyFormElements.hires_scheduler ? comfyFormElements.hires_scheduler.value : null,
+            hires_denoise: getFloatInputValue(comfyFormElements.hires_denoise, 0.5),
+            enable_body_detailer: comfyFormElements.enable_body_detailer ? comfyFormElements.enable_body_detailer.checked : false,
+            body_detailer_positive_prompt: comfyFormElements.body_detailer_positive_prompt ? comfyFormElements.body_detailer_positive_prompt.value : '',
+            body_detailer_steps: comfyFormElements.body_detailer_steps && comfyFormElements.body_detailer_steps.value ? getIntInputValue(comfyFormElements.body_detailer_steps, null) : null,
+            body_detailer_cfg: comfyFormElements.body_detailer_cfg && comfyFormElements.body_detailer_cfg.value ? getFloatInputValue(comfyFormElements.body_detailer_cfg, null) : null,
+            body_detailer_sampler_name: comfyFormElements.body_detailer_sampler_name ? comfyFormElements.body_detailer_sampler_name.value : null,
+            body_detailer_scheduler: comfyFormElements.body_detailer_scheduler ? comfyFormElements.body_detailer_scheduler.value : null,
+            body_detailer_denoise: getFloatInputValue(comfyFormElements.body_detailer_denoise, 0.7),
+            body_detailer_detector_model: comfyFormElements.body_detailer_detector_model ? comfyFormElements.body_detailer_detector_model.value : 'segm/person_yolov8m-seg.pt',
             denoise: getFloatInputValue(comfyFormElements.denoise, 1.0),
             vae: comfyFormElements.vae ? comfyFormElements.vae.value : 'model_embedded',
+            enable_controlnet: enableControlnetSwitch ? enableControlnetSwitch.checked : false,
+            controlnet_model: controlnetModelSelect ? controlnetModelSelect.value : null,
+            controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
+            controlnet_strength: controlnetStrengthSlider ? getFloatInputValue(controlnetStrengthSlider, 1.0) : 1.0,
+            controlnet_start_percent: controlnetStartPercentInput ? getFloatInputValue(controlnetStartPercentInput, 0.0) : 0.0,
+            controlnet_end_percent: controlnetEndPercentInput ? getFloatInputValue(controlnetEndPercentInput, 1.0) : 1.0,
             // [v33.2] 翻譯模式
             translation_mode: comfyFormElements.translate_local_llm?.checked ? 'llm_local' :
                 comfyFormElements.translate_llm?.checked ? 'llm' :
@@ -1276,6 +1427,44 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (comfyFormElements.adetailer_positive_prompt) comfyFormElements.adetailer_positive_prompt.value = settings.adetailer_positive_prompt || '';
             if (comfyFormElements.adetailer_steps) comfyFormElements.adetailer_steps.value = settings.adetailer_steps || '';
+            setInputValueIfDefined(comfyFormElements.adetailer_cfg, settings.adetailer_cfg);
+            setInputValueIfDefined(comfyFormElements.adetailer_denoise, settings.adetailer_denoise);
+            setInputValueIfDefined(comfyFormElements.adetailer_sampler_name, settings.adetailer_sampler_name);
+            setInputValueIfDefined(comfyFormElements.adetailer_scheduler, settings.adetailer_scheduler);
+            setInputValueIfDefined(comfyFormElements.sdxl_family_preset, settings.sdxl_family_preset);
+            if (typeof settings.enable_hires_fix === 'boolean' && comfyFormElements.enable_hires_fix) {
+                comfyFormElements.enable_hires_fix.checked = settings.enable_hires_fix;
+                comfyFormElements.enable_hires_fix.dispatchEvent(new Event('change'));
+            }
+            setInputValueIfDefined(comfyFormElements.hires_scale, settings.hires_scale);
+            setInputValueIfDefined(comfyFormElements.hires_steps, settings.hires_steps);
+            setInputValueIfDefined(comfyFormElements.hires_cfg, settings.hires_cfg);
+            setInputValueIfDefined(comfyFormElements.hires_sampler_name, settings.hires_sampler_name);
+            setInputValueIfDefined(comfyFormElements.hires_scheduler, settings.hires_scheduler);
+            setInputValueIfDefined(comfyFormElements.hires_denoise, settings.hires_denoise);
+            if (typeof settings.enable_body_detailer === 'boolean' && comfyFormElements.enable_body_detailer) {
+                comfyFormElements.enable_body_detailer.checked = settings.enable_body_detailer;
+                comfyFormElements.enable_body_detailer.dispatchEvent(new Event('change'));
+            }
+            if (comfyFormElements.body_detailer_positive_prompt) comfyFormElements.body_detailer_positive_prompt.value = settings.body_detailer_positive_prompt || '';
+            setInputValueIfDefined(comfyFormElements.body_detailer_steps, settings.body_detailer_steps);
+            setInputValueIfDefined(comfyFormElements.body_detailer_cfg, settings.body_detailer_cfg);
+            setInputValueIfDefined(comfyFormElements.body_detailer_sampler_name, settings.body_detailer_sampler_name);
+            setInputValueIfDefined(comfyFormElements.body_detailer_scheduler, settings.body_detailer_scheduler);
+            setInputValueIfDefined(comfyFormElements.body_detailer_denoise, settings.body_detailer_denoise);
+            if (comfyFormElements.body_detailer_detector_model) {
+                comfyFormElements.body_detailer_detector_model.value = settings.body_detailer_detector_model || comfyFormElements.body_detailer_detector_model.value;
+            }
+            if (enableControlnetSwitch && typeof settings.enable_controlnet === 'boolean') {
+                enableControlnetSwitch.checked = settings.enable_controlnet;
+                enableControlnetSwitch.dispatchEvent(new Event('change'));
+            }
+            setInputValueIfDefined(controlnetModelSelect, settings.controlnet_model);
+            setInputValueIfDefined(controlnetPreprocessorSelect, settings.controlnet_preprocessor);
+            setInputValueIfDefined(controlnetStrengthSlider, settings.controlnet_strength);
+            setInputValueIfDefined(controlnetStrengthNumber, settings.controlnet_strength);
+            setInputValueIfDefined(controlnetStartPercentInput, settings.controlnet_start_percent);
+            setInputValueIfDefined(controlnetEndPercentInput, settings.controlnet_end_percent);
 
             const savedPosition = settings.fixed_prompt_position || 'prepend';
             if (savedPosition === 'append' && comfyFormElements.fixed_prompt_append) {
@@ -1353,6 +1542,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }, 100); // 短暫延遲以等待異步填充完成
             }
+
+            updateSdxlAdvancedVisibility();
 
         } catch (error) {
             console.error("載入設定失敗，將使用預設值:", error.message);
@@ -1664,10 +1855,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function fetchAndPopulateSamplers() {
-        const samplerSelect = comfyFormElements.sampler_name;
-        const schedulerSelect = comfyFormElements.scheduler;
+        const samplerSelects = [
+            comfyFormElements.sampler_name,
+            comfyFormElements.adetailer_sampler_name,
+            comfyFormElements.hires_sampler_name,
+            comfyFormElements.body_detailer_sampler_name,
+        ].filter(Boolean);
+        const schedulerSelects = [
+            comfyFormElements.scheduler,
+            comfyFormElements.adetailer_scheduler,
+            comfyFormElements.hires_scheduler,
+            comfyFormElements.body_detailer_scheduler,
+        ].filter(Boolean);
 
-        if (!samplerSelect || !schedulerSelect) return;
+        if (samplerSelects.length === 0 || schedulerSelects.length === 0) return;
 
         try {
             const [samplersRes, schedulersRes] = await Promise.all([
@@ -1696,8 +1897,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             };
 
-            populateSelect(samplerSelect, samplers);
-            populateSelect(schedulerSelect, schedulers);
+            samplerSelects.forEach(select => populateSelect(select, samplers));
+            schedulerSelects.forEach(select => populateSelect(select, schedulers));
+            if (comfyFormElements.sdxl_family_preset && comfyFormElements.sdxl_family_preset.value !== 'manual') {
+                applySdxlFamilyPreset(comfyFormElements.sdxl_family_preset.value);
+            }
 
         } catch (error) {
             console.error("填充採樣器/排程器時出錯:", error);
@@ -1825,6 +2029,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isZITModel = newArchitecture === 'zit';
         const isZIBModel = newArchitecture === 'zib';
         const isCloudZitModel = newArchitecture === 'cloud_zit';
+        const zImageStepMatch = newModel.match(/(?:^|[^a-z0-9])(\d{1,2})\s*step(?:s)?(?:[^a-z0-9]|$)/i);
+        const inferredZibTurboSteps = isZIBModel && zImageStepMatch ? parseInt(zImageStepMatch[1], 10) : null;
+        const useInferredZibSteps = inferredZibTurboSteps === 8 || inferredZibTurboSteps === 10;
 
         if (isQwenModel) {
             // Qwen 模型特殊處理
@@ -1888,9 +2095,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 來源: https://github.com/Tongyi-MAI/Z-Image (num_inference_steps=50, guidance_scale=4)
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
 
-            // 切換模型時套用官方預設值，使用者可在UI中自由修改
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 28;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 4.0;
+            // 若模型名稱明示 8Step / 10Step，視為蒸餾/微調版，直接採用模型名步數，CFG 預設 1。
+            if (useInferredZibSteps) {
+                if (comfyFormElements.steps) comfyFormElements.steps.value = inferredZibTurboSteps;
+                if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1.0;
+            } else {
+                // 一般 ZIB 模型仍使用官方預設值，使用者可在 UI 中自由修改
+                if (comfyFormElements.steps) comfyFormElements.steps.value = 28;
+                if (comfyFormElements.cfg) comfyFormElements.cfg.value = 4.0;
+            }
             if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'euler';
             if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
 
@@ -1901,8 +2114,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.setItem('comfy_use_negative_prompt', 'true');
             }
 
-            console.log('ZIB 模式已啟用，已自動選擇 ae.safetensors 並套用官方 ZIB 預設 (Steps: 28, CFG: 4.0)，負面提示詞已啟用。');
-            if (comfyStatusText) comfyStatusText.textContent = 'ZIB 模式已啟用';
+            if (useInferredZibSteps) {
+                console.log(`ZIB 微調模型已啟用，已從模型名稱推斷步數 ${inferredZibTurboSteps}，並將 CFG 預設為 1.0。`);
+                if (comfyStatusText) comfyStatusText.textContent = `ZIB 微調模式已啟用 (${inferredZibTurboSteps} Steps / CFG 1.0)`;
+            } else {
+                console.log('ZIB 模式已啟用，已自動選擇 ae.safetensors 並套用官方 ZIB 預設 (Steps: 28, CFG: 4.0)，負面提示詞已啟用。');
+                if (comfyStatusText) comfyStatusText.textContent = 'ZIB 模式已啟用';
+            }
 
         } else {
             // [v2.0 新增] 對於所有非 Qwen/ZIT 模型，將 VAE 重設為預設值
@@ -1920,11 +2138,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     localStorage.setItem('comfy_use_negative_prompt', 'true');
                 }
 
-                // [v2.4] 新增: SDXL/Pony 系列預設參數
-                if (comfyFormElements.steps) comfyFormElements.steps.value = 50;
-                if (comfyFormElements.cfg) comfyFormElements.cfg.value = 6.0;
+                const inferredPreset = inferSdxlPresetFromModelName(newModel);
+                if (comfyFormElements.sdxl_family_preset) {
+                    comfyFormElements.sdxl_family_preset.value = inferredPreset;
+                }
+                applySdxlFamilyPreset(inferredPreset);
 
-                console.log('SDXL/Pony 模式: 已自動開啟負面提示詞，並設定 Steps=50, CFG=6.0');
+                console.log(`SDXL/Pony 模式: 已自動開啟負面提示詞，並套用 ${inferredPreset} 建議值。`);
             }
         }
 
@@ -1941,8 +2161,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
+        await syncCloudZitSession(newArchitecture === 'cloud_zit');
         await updateLoraListForModel(newModel);
         await refreshZimageTextEncoderInfo();
+        updateSdxlAdvancedVisibility();
         // [v2.2] 更新 ControlNet 列表以匹配當前模型 (filtering)
         await fetchAndPopulateControlNetResources();
     }
@@ -2552,11 +2774,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             adetailer_positive_prompt: comfyFormElements.adetailer_positive_prompt ? comfyFormElements.adetailer_positive_prompt.value : '',
             translate_adetailer_positive: comfyFormElements.translate_adetailer_positive ? comfyFormElements.translate_adetailer_positive.checked : false,
             adetailer_steps: comfyFormElements.adetailer_steps && comfyFormElements.adetailer_steps.value ? getIntInputValue(comfyFormElements.adetailer_steps, null) : null,
+            adetailer_cfg: comfyFormElements.adetailer_cfg && comfyFormElements.adetailer_cfg.value ? getFloatInputValue(comfyFormElements.adetailer_cfg, null) : null,
+            adetailer_sampler_name: comfyFormElements.adetailer_sampler_name ? comfyFormElements.adetailer_sampler_name.value : null,
+            adetailer_scheduler: comfyFormElements.adetailer_scheduler ? comfyFormElements.adetailer_scheduler.value : null,
+            adetailer_denoise: comfyFormElements.adetailer_denoise && comfyFormElements.adetailer_denoise.value ? getFloatInputValue(comfyFormElements.adetailer_denoise, null) : null,
             enable_controlnet: enableControlnetSwitch ? enableControlnetSwitch.checked : false,
             controlnet_model: controlnetModelSelect ? controlnetModelSelect.value : null,
             controlnet_preprocessor: controlnetPreprocessorSelect ? controlnetPreprocessorSelect.value : null,
             controlnet_strength: controlnetStrengthSlider ? getFloatInputValue(controlnetStrengthSlider, 1.0) : 1.0,
+            controlnet_start_percent: controlnetStartPercentInput ? getFloatInputValue(controlnetStartPercentInput, 0.0) : 0.0,
+            controlnet_end_percent: controlnetEndPercentInput ? getFloatInputValue(controlnetEndPercentInput, 1.0) : 1.0,
             controlnet_image: controlnetState.controlnet_image,
+            sdxl_family_preset: comfyFormElements.sdxl_family_preset ? comfyFormElements.sdxl_family_preset.value : 'manual',
+            enable_hires_fix: comfyFormElements.enable_hires_fix ? comfyFormElements.enable_hires_fix.checked : false,
+            hires_scale: getFloatInputValue(comfyFormElements.hires_scale, 1.5),
+            hires_steps: comfyFormElements.hires_steps && comfyFormElements.hires_steps.value ? getIntInputValue(comfyFormElements.hires_steps, null) : null,
+            hires_cfg: comfyFormElements.hires_cfg && comfyFormElements.hires_cfg.value ? getFloatInputValue(comfyFormElements.hires_cfg, null) : null,
+            hires_sampler_name: comfyFormElements.hires_sampler_name ? comfyFormElements.hires_sampler_name.value : null,
+            hires_scheduler: comfyFormElements.hires_scheduler ? comfyFormElements.hires_scheduler.value : null,
+            hires_denoise: getFloatInputValue(comfyFormElements.hires_denoise, 0.5),
+            enable_body_detailer: comfyFormElements.enable_body_detailer ? comfyFormElements.enable_body_detailer.checked : false,
+            body_detailer_positive_prompt: comfyFormElements.body_detailer_positive_prompt ? comfyFormElements.body_detailer_positive_prompt.value : '',
+            body_detailer_steps: comfyFormElements.body_detailer_steps && comfyFormElements.body_detailer_steps.value ? getIntInputValue(comfyFormElements.body_detailer_steps, null) : null,
+            body_detailer_cfg: comfyFormElements.body_detailer_cfg && comfyFormElements.body_detailer_cfg.value ? getFloatInputValue(comfyFormElements.body_detailer_cfg, null) : null,
+            body_detailer_sampler_name: comfyFormElements.body_detailer_sampler_name ? comfyFormElements.body_detailer_sampler_name.value : null,
+            body_detailer_scheduler: comfyFormElements.body_detailer_scheduler ? comfyFormElements.body_detailer_scheduler.value : null,
+            body_detailer_denoise: getFloatInputValue(comfyFormElements.body_detailer_denoise, 0.7),
+            body_detailer_detector_model: comfyFormElements.body_detailer_detector_model ? comfyFormElements.body_detailer_detector_model.value : 'segm/person_yolov8m-seg.pt',
             vae: comfyFormElements.vae.value,
             // [v33.2] 翻譯模式: 'llm' | 'llm_local' | 'google' | 'none'
             translation_mode: comfyFormElements.translate_local_llm?.checked ? 'llm_local' :
@@ -2595,6 +2839,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 1. ADetailer 步數
             const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
+            const bodyDetailerSteps = payload.enable_body_detailer
+                ? ((payload.body_detailer_steps || Math.max(16, Math.round(mainSteps * 0.6))) * batchSize)
+                : 0;
+            const hiresSteps = payload.enable_hires_fix
+                ? (payload.hires_steps || Math.max(12, Math.round(mainSteps * 0.5)))
+                : 0;
 
             // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
             // 假設分塊大小 512，重疊 64，有效步進約 448。
@@ -2607,6 +2857,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             // 計算總步數
             totalExpectedSteps = mainSteps; // KSampler 主生成
             totalExpectedSteps += adetailerSteps; // ADetailer
+            totalExpectedSteps += bodyDetailerSteps; // Body Detailer
+            totalExpectedSteps += hiresSteps; // 第二段 refine
 
             // 加上 VAE 解碼 (所有模式都會發生)
             totalExpectedSteps += estimatedVaeSteps;
@@ -2616,7 +2868,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 totalExpectedSteps += estimatedVaeSteps;
             }
 
-            console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
+            console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, BodyDetailer: ${bodyDetailerSteps}, Hires: ${hiresSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
         }
 
         try {
@@ -2894,7 +3146,45 @@ document.addEventListener('DOMContentLoaded', async () => {
             modalParams.controlnet_model.textContent = params.controlnet_model || '未知';
             modalParams.controlnet_preprocessor.textContent = params.controlnet_preprocessor || '未知';
             modalParams.controlnet_strength.textContent = params.controlnet_strength || '未知';
+            if (modalParams.controlnet_range) {
+                const start = params.controlnet_start_percent ?? 0;
+                const end = params.controlnet_end_percent ?? 1;
+                modalParams.controlnet_range.textContent = `${start} → ${end}`;
+            }
             modalParams.controlnet_info.style.display = 'block';
+        }
+
+        if (params.enable_adetailer && modalParams.adetailer_info) {
+            const adetailerSteps = params.adetailer_steps ?? params.steps ?? '未知';
+            const adetailerCfg = params.adetailer_cfg ?? params.cfg ?? '未知';
+            const adetailerSampler = params.adetailer_sampler_name || params.sampler_name || '未知';
+            const adetailerScheduler = params.adetailer_scheduler || params.scheduler || '未知';
+            const adetailerDenoise = params.adetailer_denoise ?? '節點預設';
+            modalParams.adetailer_steps_cfg.textContent = `${adetailerSteps} / ${adetailerCfg}`;
+            modalParams.adetailer_sampler_scheduler.textContent = `${adetailerSampler} / ${adetailerScheduler}`;
+            modalParams.adetailer_denoise.textContent = adetailerDenoise;
+            modalParams.adetailer_info.style.display = 'block';
+        }
+
+        if (params.enable_hires_fix && modalParams.hires_info) {
+            modalParams.hires_scale_denoise.textContent = `${params.hires_scale ?? '未知'} / ${params.hires_denoise ?? '未知'}`;
+            modalParams.hires_steps_cfg.textContent = `${params.hires_steps ?? '自動'} / ${params.hires_cfg ?? '沿用主流程'}`;
+            modalParams.hires_sampler_scheduler.textContent = `${params.hires_sampler_name || params.sampler_name || '未知'} / ${params.hires_scheduler || params.scheduler || '未知'}`;
+            modalParams.hires_info.style.display = 'block';
+        }
+
+        if (params.enable_body_detailer && modalParams.body_detailer_info) {
+            modalParams.body_detailer_detector.textContent = params.body_detailer_detector_model || '未知';
+            modalParams.body_detailer_steps_cfg_denoise.textContent = `${params.body_detailer_steps ?? '自動'} / ${params.body_detailer_cfg ?? '沿用主流程'} / ${params.body_detailer_denoise ?? '未知'}`;
+            modalParams.body_detailer_sampler_scheduler.textContent = `${params.body_detailer_sampler_name || params.sampler_name || '未知'} / ${params.body_detailer_scheduler || params.scheduler || '未知'}`;
+            modalParams.body_detailer_info.style.display = 'block';
+        }
+
+        if (params.sdxl_family_preset && params.sdxl_family_preset !== 'manual' && modalParams.sdxl_preset_info) {
+            modalParams.sdxl_preset.textContent = params.sdxl_family_preset === 'noob_vpred'
+                ? 'NoobAI v-pred'
+                : 'Illustrious / 一般 SDXL';
+            modalParams.sdxl_preset_info.style.display = 'block';
         }
 
         if (item.is_video && params.video_params) {
@@ -3467,6 +3757,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             comfyFormElements.enable_adetailer.dispatchEvent(new Event('change'));
         }
+        if (comfyFormElements.enable_hires_fix && hiresFixOptions) {
+            comfyFormElements.enable_hires_fix.addEventListener('change', (e) => {
+                hiresFixOptions.style.display = e.target.checked ? 'block' : 'none';
+                hiresFixOptions.style.opacity = e.target.checked ? '1' : '0.75';
+            });
+            comfyFormElements.enable_hires_fix.dispatchEvent(new Event('change'));
+        }
+        if (comfyFormElements.enable_body_detailer && bodyDetailerOptions) {
+            comfyFormElements.enable_body_detailer.addEventListener('change', (e) => {
+                bodyDetailerOptions.style.display = e.target.checked ? 'block' : 'none';
+            });
+            comfyFormElements.enable_body_detailer.dispatchEvent(new Event('change'));
+        }
+        if (comfyFormElements.sdxl_family_preset) {
+            comfyFormElements.sdxl_family_preset.addEventListener('change', (e) => {
+                applySdxlFamilyPreset(e.target.value);
+            });
+        }
+        updateSdxlAdvancedVisibility();
 
         if (comfyFormElements.optimize_positive && comfyFormElements.ai_optimize) {
             const syncOptimizeControls = (isEnabled) => {
