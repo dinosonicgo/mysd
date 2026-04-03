@@ -1216,15 +1216,17 @@
                                 <hr>
                                 <h5><i class="bi bi-stars"></i> SDXL 高遵循設定</h5>
                                 <div class="mb-3">
-                                    <label for="comfy-sdxl-family-preset" class="form-label"><strong>模型家族建議值</strong></label>
+                                    <label for="comfy-sdxl-family-preset" class="form-label d-flex justify-content-between align-items-center">
+                                        <strong>模型家族建議值</strong>
+                                        <button type="button" class="btn btn-sm btn-outline-info sdxl-help-btn" data-help-target="sdxl-help-preset" title="說明">
+                                            <i class="bi bi-info-circle"></i>
+                                        </button>
+                                    </label>
                                     <select class="form-select" id="comfy-sdxl-family-preset">
                                         <option value="manual">手動（不套建議值）</option>
                                         <option value="illustrious">Illustrious / 一般 SDXL</option>
                                         <option value="noob_vpred">NoobAI v-pred</option>
                                     </select>
-                                    <small class="form-text text-muted d-block mt-1">
-                                        切換後只會帶入建議值，之後你仍可自由再改。這個 preset 只會改主採樣、ADetailer 與 ControlNet 建議值，不會替你強制開啟所有功能。
-                                    </small>
                                 </div>
                                 <div class="alert alert-secondary py-2 small" id="comfy-sdxl-preset-summary">
                                     手動模式：不自動改任何值。
@@ -1235,14 +1237,13 @@
 
                                 <div class="form-check form-switch mb-2">
                                     <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-hires-fix">
-                                    <label class="form-check-label" for="comfy-enable-hires-fix">啟用第二段 Refine / Hires Fix</label>
+                                    <label class="form-check-label d-flex justify-content-between align-items-center w-100" for="comfy-enable-hires-fix">
+                                        <span>啟用第二段 Refine / Hires Fix</span>
+                                        <button type="button" class="btn btn-sm btn-outline-info sdxl-help-btn" data-help-target="sdxl-help-hires" title="說明">
+                                            <i class="bi bi-info-circle"></i>
+                                        </button>
+                                    </label>
                                 </div>
-                                <small class="form-text text-muted d-block mb-2">
-                                    <strong>Refine / Hires Fix 是什麼：</strong>這是額外的第二段精修放大。主流程先出一張底圖，再放大並重採樣一次。<br>
-                                    <strong>適合什麼時候開：</strong>你想補細節、材質、線條、局部結構，或讓高解析圖更穩。<br>
-                                    <strong>沒開會怎樣：</strong>主流程仍然正常，但少了第二段補細節的機會。<br>
-                                    先用主流程出底圖，再放大並做第二次重採樣。用來補細節、材質、線條，不是單純放大。
-                                </small>
                                 <div id="hires-fix-options" style="display: none;">
                                     <div class="row g-2 mb-2">
                                         <div class="col-md-4">
@@ -1283,14 +1284,13 @@
 
                                 <div class="form-check form-switch mt-3 mb-2">
                                     <input class="form-check-input" type="checkbox" role="switch" id="comfy-enable-body-detailer">
-                                    <label class="form-check-label" for="comfy-enable-body-detailer">啟用身體/NSFW 區域細修</label>
+                                    <label class="form-check-label d-flex justify-content-between align-items-center w-100" for="comfy-enable-body-detailer">
+                                        <span>啟用身體/NSFW 區域細修</span>
+                                        <button type="button" class="btn btn-sm btn-outline-info sdxl-help-btn" data-help-target="sdxl-help-body-detailer" title="說明">
+                                            <i class="bi bi-info-circle"></i>
+                                        </button>
+                                    </label>
                                 </div>
-                                <small class="form-text text-muted d-block mb-2">
-                                    <strong>Body Detailer 是什麼：</strong>這是額外的第二個局部細修器，和 ADetailer 類似，但目標是身體或指定區域，不是只修臉。<br>
-                                    <strong>適合什麼時候開：</strong>複雜姿勢、多人互動、局部解剖不穩、想只強化身體某些區域。<br>
-                                    <strong>沒開會怎樣：</strong>主流程照常跑，只是不會再額外做身體區域補修。<br>
-                                    用第二個 detailer 專門修身體或局部區域。適合複雜姿勢、多人互動或局部細節不穩的情況。
-                                </small>
                                 <div id="body-detailer-options" style="display: none;">
                                     <div class="mb-2">
                                         <label for="comfy-body-detailer-positive-prompt" class="form-label small"><strong>身體區域專用提示詞</strong></label>
@@ -1333,6 +1333,19 @@
                                         `偵測器` 決定抓哪種區域，`專用提示詞` 可只強化這段局部，`步數 / CFG / Denoise` 與 ADetailer 類似，但作用在身體區域。
                                     </small>
                                 </div>
+                            </div>
+
+                            <div id="sdxl-help-preset" class="d-none">
+                                <p><strong>模型家族建議值</strong> 是快速帶入一組比較常用的建議參數，不會替你自動打開額外功能。</p>
+                                <p class="mb-0">它目前主要會改：主流程的 <code>steps / cfg / sampler / scheduler</code>，以及 <code>ADetailer</code>、<code>ControlNet</code> 的建議值。切完之後你仍然可以全部手改。</p>
+                            </div>
+                            <div id="sdxl-help-hires" class="d-none">
+                                <p><strong>Refine / Hires Fix</strong> 是第二段精修放大。主流程先出一張底圖，再放大並重採樣一次。</p>
+                                <p class="mb-0">適合你想補細節、材質、線條、局部結構，或讓高解析圖更穩。沒開時主流程照常生圖，只是不做第二段補修。</p>
+                            </div>
+                            <div id="sdxl-help-body-detailer" class="d-none">
+                                <p><strong>Body Detailer</strong> 是額外的第二個局部細修器，概念像 ADetailer，但不是修臉，而是修身體或指定區域。</p>
+                                <p class="mb-0">適合複雜姿勢、多人互動、局部解剖不穩，或你想只強化身體某些區域。沒開時主流程照常跑，只是少了這一步局部補修。</p>
                             </div>
 
                             <hr>
@@ -1948,6 +1961,18 @@
         </div>
     </div>
 
+    <div class="modal fade" id="sdxl-help-modal" tabindex="-1" aria-labelledby="sdxlHelpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sdxlHelpModalLabel">說明</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="sdxl-help-modal-body"></div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- GM 登入 Modal -->
     <div class="modal fade" id="gm-login-modal" tabindex="-1" aria-labelledby="gmLoginModalLabel" aria-hidden="true">
@@ -2103,7 +2128,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1775085559"></script>
+    <script src="js/app.js?v=1775258782"></script>
 </body>
 
 </html>

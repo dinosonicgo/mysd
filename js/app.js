@@ -37,6 +37,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatModalTitle = getById('chat-modal-title');
     const chatModalTextarea = getById('chat-modal-textarea');
     const chatModalSaveBtn = getById('chat-modal-save-btn');
+    const sdxlHelpModalEl = getById('sdxl-help-modal');
+    let bsSdxlHelpModal = null;
+    const sdxlHelpModalBody = getById('sdxl-help-modal-body');
+    const sdxlHelpModalLabel = getById('sdxlHelpModalLabel');
 
 
     // --- 元素選擇器 (ComfyUI - 參數設定) ---
@@ -3729,6 +3733,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const gmLoginModalEl = getById('gm-login-modal');
         if (gmLoginModalEl) bsGmLoginModal = new bootstrap.Modal(gmLoginModalEl);
         if (chatModalEl) bsChatModal = new bootstrap.Modal(chatModalEl);
+        if (sdxlHelpModalEl) bsSdxlHelpModal = new bootstrap.Modal(sdxlHelpModalEl);
 
         // --- 事件監聽器 (與裝置無關的全域監聽) ---
 
@@ -3749,6 +3754,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (chatBtnWorldview) chatBtnWorldview.addEventListener('click', () => openChatModal('worldview'));
         if (chatBtnAisettings) chatBtnAisettings.addEventListener('click', () => openChatModal('aisettings'));
         if (chatBtnSystem) chatBtnSystem.addEventListener('click', () => openChatModal('system'));
+        document.querySelectorAll('.sdxl-help-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.dataset.helpTarget;
+                const target = targetId ? getById(targetId) : null;
+                if (!target || !bsSdxlHelpModal) return;
+                if (sdxlHelpModalLabel) {
+                    const labelText = btn.closest('label')?.innerText?.replace(/\s+/g, ' ').trim() || '說明';
+                    sdxlHelpModalLabel.textContent = labelText;
+                }
+                if (sdxlHelpModalBody) {
+                    sdxlHelpModalBody.innerHTML = target.innerHTML;
+                }
+                bsSdxlHelpModal.show();
+            });
+        });
         if (chatBtnClear) {
             chatBtnClear.addEventListener('click', () => {
                 if (confirm('確定要清除所有對話歷史和設定嗎？此操作不可復原！')) {
