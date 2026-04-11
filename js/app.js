@@ -2870,20 +2870,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const isCloudOfficialZit = payload.model_architecture === 'cloud_zit' || payload.model === CLOUD_OFFICIAL_ZIT_MODEL_NAME;
         if (isCloudOfficialZit) {
-            const unsupported = [];
-            if (payload.source_image || payload.inpaint_mask) unsupported.push('圖生圖/局部修圖');
-            if (Array.isArray(payload.loras) && payload.loras.length > 0) unsupported.push('LoRA');
-            if (payload.enable_controlnet) unsupported.push('ControlNet');
-            if (payload.enable_adetailer) unsupported.push('ADetailer');
-            if (payload.batch_size > 1) unsupported.push('批量生成');
-
-            if (unsupported.length > 0) {
-                if (comfyStatusText) {
-                    comfyStatusText.textContent = `錯誤:\n雲端官方 ZIT 目前不支援 ${unsupported.join('、')}`;
-                    comfyStatusText.classList.add('text-danger');
-                }
-                resetUI();
-                return;
+            const ignored = [];
+            if (payload.source_image || payload.inpaint_mask) ignored.push('圖生圖/局部修圖');
+            if (Array.isArray(payload.loras) && payload.loras.length > 0) ignored.push('LoRA');
+            if (payload.enable_controlnet) ignored.push('ControlNet');
+            if (payload.enable_adetailer) ignored.push('ADetailer');
+            if (payload.batch_size > 1) ignored.push('批量生成');
+            if (ignored.length > 0) {
+                console.info(`[雲端官方 ZIT] 本次將忽略本地附加功能: ${ignored.join('、')}`);
             }
         }
 
@@ -4595,30 +4589,36 @@ function filterModels() {
 
     modelCards.forEach(card => {
         const modelName = card.dataset.itemName.toLowerCase();
+        const architecture = (card.dataset.architecture || '').toLowerCase();
+        let modelGroup = 'sd15';
+
+        if (['cloud_zit', 'zit', 'zib', 'qwen'].includes(architecture) || modelName.includes('zit') || modelName.includes('zib') || modelName.includes('qwen')) {
+            modelGroup = 'zimage';
+        } else if (
+            ['sdxl', 'pony'].includes(architecture) ||
+            modelName.includes('sdxl') ||
+            modelName.includes('xl') ||
+            modelName.includes('pony') ||
+            modelName.includes('noob') ||
+            modelName.includes('noobai') ||
+            modelName.includes('illustrious') ||
+            modelName.includes('_il') ||
+            modelName.includes(' il') ||
+            modelName.includes('nai') ||
+            modelName.includes('protovision')
+        ) {
+            modelGroup = 'sdxl';
+        } else if (architecture.includes('flux') || modelName.includes('flux')) {
+            modelGroup = 'flux';
+        } else if (modelName.includes('sd3')) {
+            modelGroup = 'sd3';
+        }
+
         let show = false;
         if (selectedFilters.length === 0) {
             show = true;
         } else {
-            show = selectedFilters.some(filter => {
-                if (filter === 'sdxl' && (
-                    modelName.includes('xl') ||
-                    modelName.includes('sdxl') ||
-                    modelName.includes('nbi') ||
-                    modelName.includes('noobai') ||
-                    modelName.includes('il') ||
-                    modelName.includes('illustrious') ||
-                    modelName.includes('protovision')
-                ) && !modelName.includes('sd3')) return true;
-                if (filter === 'sd3' && modelName.includes('sd3')) return true;
-                if (filter === 'sd15' && !modelName.includes('xl') && !modelName.includes('sd3')) return true;
-                if (filter === 'flux' && modelName.includes('flux')) return true;
-                if (filter === 'sdxl' && modelName.includes('pony')) return true;
-                if (filter === 'qwen' && modelName.includes('qwen')) return true;
-                // [v18.18] ZIT 篩選支援 (如果有的話，這通常歸類在 SDXL 或需要新的標籤)
-                // 暫時讓 ZIT 在預設情況下顯示，或如果它包含 zit 關鍵字
-                if (modelName.includes('zit')) return true;
-                return false;
-            });
+            show = selectedFilters.includes(modelGroup);
         }
         card.style.display = show ? 'block' : 'none';
     });
