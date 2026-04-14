@@ -304,7 +304,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let clientId = '';
     let deviceHistoryCache = {};
     let currentHistoryObserver = null;
-    const CLOUD_OFFICIAL_ZIT_MODEL_NAME = '[雲端官方] ZIT (abao.ai)';
     let cloudZitSessionDesired = false;
 
     function getCurrentHistoryDeviceId() {
@@ -322,19 +321,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function syncCloudZitSession(shouldKeepOpen) {
-        if (cloudZitSessionDesired === shouldKeepOpen) return;
         cloudZitSessionDesired = shouldKeepOpen;
-        const endpoint = shouldKeepOpen
-            ? '/api/comfyui/cloud_zit/session/ensure'
-            : '/api/comfyui/cloud_zit/session/shutdown';
-        try {
-            await fetchWithUserContext(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-        } catch (error) {
-            console.warn(`同步雲端 ZIT 會話失敗 (${shouldKeepOpen ? 'ensure' : 'shutdown'}):`, error);
-        }
+        return;
     }
 
     function removeHistoryItemElement(element) {
@@ -838,7 +826,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ]);
 
         await loadSettings();
-        await syncCloudZitSession(comfyFormElements.model_architecture === 'cloud_zit' || comfyFormElements.model === CLOUD_OFFICIAL_ZIT_MODEL_NAME);
+        await syncCloudZitSession(false);
 
         await initializeHistory();
 
@@ -2085,7 +2073,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isQwenModel = newModel.toLowerCase().includes('qwen');
         const isZITModel = newArchitecture === 'zit';
         const isZIBModel = newArchitecture === 'zib';
-        const isCloudZitModel = newArchitecture === 'cloud_zit';
         const zImageStepMatch = newModel.match(/(?:^|[^a-z0-9])(\d{1,2})\s*step(?:s)?(?:[^a-z0-9]|$)/i);
         const inferredZibTurboSteps = isZIBModel && zImageStepMatch ? parseInt(zImageStepMatch[1], 10) : null;
         const useInferredZibSteps = inferredZibTurboSteps === 8 || inferredZibTurboSteps === 10;
@@ -2219,7 +2206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (bsModelSelectionModal) bsModelSelectionModal.hide();
-        await syncCloudZitSession(newArchitecture === 'cloud_zit');
+        await syncCloudZitSession(false);
         await updateLoraListForModel(newModel);
         await refreshZimageTextEncoderInfo();
         updateArchitectureSpecificVisibility();
