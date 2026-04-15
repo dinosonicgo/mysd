@@ -1602,10 +1602,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function updateLoraListForModel(modelName) {
         if (!modelName) return;
         if (!loraSelectionGrid) return;
-        if (comfyFormElements.model_architecture === 'cloud_zit' || modelName === CLOUD_OFFICIAL_ZIT_MODEL_NAME) {
-            loraSelectionGrid.innerHTML = '<p class="text-muted">雲端官方 ZIT 不支援 LoRA。</p>';
-            return;
-        }
         loraSelectionGrid.innerHTML = '<p class="text-muted">正在載入 LoRA 列表...</p>';
 
         const noFilterCheckbox = document.getElementById('lora-no-filter-checkbox');
@@ -2855,60 +2851,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             enable_local_translation: comfyFormElements.translate_llm?.checked || comfyFormElements.translate_local_llm?.checked || comfyFormElements.translate_google?.checked
         };
 
-        const isCloudOfficialZit = payload.model_architecture === 'cloud_zit' || payload.model === CLOUD_OFFICIAL_ZIT_MODEL_NAME;
-        if (isCloudOfficialZit) {
-            const ignored = [];
-            if (payload.source_image || payload.inpaint_mask) ignored.push('圖生圖/局部修圖');
-            if (Array.isArray(payload.loras) && payload.loras.length > 0) ignored.push('LoRA');
-            if (payload.enable_controlnet) ignored.push('ControlNet');
-            if (payload.enable_adetailer) ignored.push('ADetailer');
-            if (payload.batch_size > 1) ignored.push('批量生成');
-            if (ignored.length > 0) {
-                console.info(`[雲端官方 ZIT] 本次將忽略本地附加功能: ${ignored.join('、')}`);
-            }
-        }
-
         // --- 進度條總步數預算 ---
-        if (isCloudOfficialZit) {
-            totalExpectedSteps = 4;
-            console.log('[進度條預算] 雲端官方 ZIT 使用固定 4 階段進度。');
-        } else {
-            const mainSteps = payload.steps;
-            const batchSize = payload.batch_size;
+        const mainSteps = payload.steps;
+        const batchSize = payload.batch_size;
 
-            // 1. ADetailer 步數
-            const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
-            const bodyDetailerSteps = payload.enable_body_detailer
-                ? ((payload.body_detailer_steps || Math.max(16, Math.round(mainSteps * 0.6))) * batchSize)
-                : 0;
-            const hiresSteps = payload.enable_hires_fix
-                ? (payload.hires_steps || Math.max(12, Math.round(mainSteps * 0.5)))
-                : 0;
+        // 1. ADetailer 步數
+        const adetailerSteps = payload.enable_adetailer ? (mainSteps * batchSize) : 0;
+        const bodyDetailerSteps = payload.enable_body_detailer
+            ? ((payload.body_detailer_steps || Math.max(16, Math.round(mainSteps * 0.6))) * batchSize)
+            : 0;
+        const hiresSteps = payload.enable_hires_fix
+            ? (payload.hires_steps || Math.max(12, Math.round(mainSteps * 0.5)))
+            : 0;
 
-            // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
-            // 假設分塊大小 512，重疊 64，有效步進約 448。
-            // 這只是一個估算值，目的是讓進度條不要太早跑完。
-            const tilesX = Math.ceil(payload.width / 448);
-            const tilesY = Math.ceil(payload.height / 448);
-            const estimatedTilesPerImage = tilesX * tilesY;
-            const estimatedVaeSteps = estimatedTilesPerImage * batchSize;
+        // 2. VAE Tiled 步數估算 (針對 2060/3060 強制分塊的情況)
+        // 假設分塊大小 512，重疊 64，有效步進約 448。
+        // 這只是一個估算值，目的是讓進度條不要太早跑完。
+        const tilesX = Math.ceil(payload.width / 448);
+        const tilesY = Math.ceil(payload.height / 448);
+        const estimatedTilesPerImage = tilesX * tilesY;
+        const estimatedVaeSteps = estimatedTilesPerImage * batchSize;
 
-            // 計算總步數
-            totalExpectedSteps = mainSteps; // KSampler 主生成
-            totalExpectedSteps += adetailerSteps; // ADetailer
-            totalExpectedSteps += bodyDetailerSteps; // Body Detailer
-            totalExpectedSteps += hiresSteps; // 第二段 refine
+        // 計算總步數
+        totalExpectedSteps = mainSteps; // KSampler 主生成
+        totalExpectedSteps += adetailerSteps; // ADetailer
+        totalExpectedSteps += bodyDetailerSteps; // Body Detailer
+        totalExpectedSteps += hiresSteps; // 第二段 refine
 
-            // 加上 VAE 解碼 (所有模式都會發生)
+        // 加上 VAE 解碼 (所有模式都會發生)
+        totalExpectedSteps += estimatedVaeSteps;
+
+        // 如果是「以圖生圖」，還會有 VAE 編碼
+        if (payload.source_image) {
             totalExpectedSteps += estimatedVaeSteps;
-
-            // 如果是「以圖生圖」，還會有 VAE 編碼
-            if (payload.source_image) {
-                totalExpectedSteps += estimatedVaeSteps;
-            }
-
-            console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, BodyDetailer: ${bodyDetailerSteps}, Hires: ${hiresSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
         }
+
+        console.log(`[進度條預算] 主步數: ${mainSteps}, ADetailer: ${adetailerSteps}, BodyDetailer: ${bodyDetailerSteps}, Hires: ${hiresSteps}, 預估 VAE(單程): ${estimatedVaeSteps}, 總計: ${totalExpectedSteps}`);
 
         try {
             const response = await fetchWithUserContext('/api/comfyui/generate', {
