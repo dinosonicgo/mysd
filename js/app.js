@@ -2054,6 +2054,11 @@ document.addEventListener('DOMContentLoaded', async () => {
          *      強制將步數(steps)設定為 8 和 CFG 設定為 1.0 的硬編碼邏輯。
          *      現在函式只負責更新模型名稱和架構，參數將完全由 UI 決定。
          */
+        if (!bsModelSelectionModal && modelSelectionModal) {
+            bsModelSelectionModal = bootstrap.Modal.getOrCreateInstance(modelSelectionModal);
+        }
+        if (bsModelSelectionModal) bsModelSelectionModal.hide();
+
         const newModel = item.name;
         const newArchitecture = item.architecture || 'sdxl';
         if (comfyFormElements.model !== newModel) {
@@ -2089,24 +2094,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             console.log('Qwen 模式已啟用，已自動選擇 Qwen 專用 VAE。');
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
-        } else if (isCloudZitModel) {
-            if (comfyFormElements.vae) comfyFormElements.vae.value = 'model_embedded';
-            if (comfyFormElements.steps) comfyFormElements.steps.value = 8;
-            if (comfyFormElements.cfg) comfyFormElements.cfg.value = 1;
-            if (comfyFormElements.sampler_name) comfyFormElements.sampler_name.value = 'euler';
-            if (comfyFormElements.scheduler) comfyFormElements.scheduler.value = 'simple';
-            comfyFormElements.loras = [];
-            renderSelectedLoras();
-
-            const useNegativePromptCheckbox = document.getElementById('comfy-use-negative-prompt');
-            if (useNegativePromptCheckbox) {
-                useNegativePromptCheckbox.checked = false;
-                localStorage.setItem('comfy_use_negative_prompt', 'false');
-            }
-
-            console.log('雲端官方 ZIT 模式已啟用，將改走 abao.ai 自動生成並下載回本地。');
-            if (comfyStatusText) comfyStatusText.textContent = '雲端官方 ZIT 模式已啟用';
-
         } else if (isZITModel) {
             // [v2.1] ZIT 模型特殊處理
             // [v36.0] 官方 Z-Image 推薦: steps=8, cfg=0 (DMD distilled 模型不使用 CFG)
@@ -2201,7 +2188,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('翻譯模式未設定，已回退到 LLM 預設。');
         }
 
-        if (bsModelSelectionModal) bsModelSelectionModal.hide();
         await syncCloudZitSession(false);
         await updateLoraListForModel(newModel);
         await refreshZimageTextEncoderInfo();
