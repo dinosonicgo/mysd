@@ -1,1 +1,14 @@
-{"tunnel_url": "https://test-tunnel.example.com"}
+{
+  "devices": {
+    "RTX3050": {
+      "url": "https://designers-untitled-principle-confidentiality.trycloudflare.com",
+      "timestamp": 1782227871,
+      "status": "online"
+    },
+    "RTX2060": {
+      "url": "https://revolution-optimization-competitive-promised.trycloudflare.com",
+      "timestamp": 1765287961,
+      "status": "online"
+    }
+  }
+}
