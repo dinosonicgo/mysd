@@ -635,7 +635,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function getQuickAnglePrompt(item) {
         const architecture = (comfyFormElements.model_architecture || '').toLowerCase();
-        const naturalArchitectures = new Set(['zit', 'zib', 'z-image', 'qwen', 'flux']);
+        const naturalArchitectures = new Set(['zit', 'zib', 'z-image', 'qwen', 'flux', 'krea2']);
         if (naturalArchitectures.has(architecture)) {
             return item.natural || item.tag;
         }
