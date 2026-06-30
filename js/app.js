@@ -1783,7 +1783,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
                 // [v18.18 修正] 新增 zib 架構保留
-                if (model.architecture === 'zit' || model.architecture === 'zib' || model.architecture === 'cloud_zit') {
+                if (model.architecture === 'zit' || model.architecture === 'zib' || model.architecture === 'cloud_zit' || model.architecture === 'anima' || model.architecture === 'krea2') {
                     // Do nothing, keep 'zit' / 'zib'
                 } else if (modelNameLower.includes('qwen')) {
                     model.architecture = 'qwen';
@@ -2149,8 +2149,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (comfyStatusText) comfyStatusText.textContent = 'ZIB 模式已啟用';
             }
 
+        } else if (newArchitecture === 'anima') {
+            // [v3.0 全新] Anima 預設設定
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
+            const useNegativePromptAnima = document.getElementById('comfy-use-negative-prompt');
+            if (useNegativePromptAnima) {
+                useNegativePromptAnima.checked = true;
+                localStorage.setItem('comfy_use_negative_prompt', 'true');
+            }
+            console.log('Anima 模式已啟用，VAE 設為 qwen_image_vae');
+            if (comfyStatusText) comfyStatusText.textContent = 'Anima 模式已啟用';
+
+        } else if (newArchitecture === 'krea2') {
+            // [v2.0 全新] Krea2 預設設定
+            if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
+            const useNegativePromptKrea2 = document.getElementById('comfy-use-negative-prompt');
+            if (useNegativePromptKrea2) {
+                useNegativePromptKrea2.checked = false;
+                localStorage.setItem('comfy_use_negative_prompt', 'false');
+            }
+            console.log('Krea2 模式已啟用，VAE 設為 qwen_image_vae（負面提示詞已關閉）');
+            if (comfyStatusText) comfyStatusText.textContent = 'Krea2 模式已啟用';
+
         } else {
-            // [v2.0 新增] 對於所有非 Qwen/ZIT 模型，將 VAE 重設為預設值
+            // [v2.0 新增] 對於所有非 Qwen/ZIT/ZIB/Anima/Krea2 模型，將 VAE 重設為預設值
             if (comfyFormElements.vae) {
                 comfyFormElements.vae.value = 'model_embedded';
                 console.log('通用模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
