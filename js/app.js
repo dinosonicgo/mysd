@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // --- 元素選擇器 (ComfyUI - 參數設定) ---
+    const checkpointArchitectureByName = new Map();
+
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
@@ -1255,7 +1257,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.model = settings.model;
                 if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model.split(/[\\/]/).pop();
             }
-            if (settings.model_architecture) {
+            const savedModelBaseName = (settings.model || '').split(/[\\/]/).pop();
+            const authoritativeArchitecture = checkpointArchitectureByName.get(settings.model)
+                || checkpointArchitectureByName.get(savedModelBaseName);
+            if (authoritativeArchitecture) {
+                comfyFormElements.model_architecture = authoritativeArchitecture;
+                if (settings.model_architecture !== authoritativeArchitecture) {
+                    console.warn(
+                        `[模型路由修正] 已將舊設定架構 ${settings.model_architecture} 修正為 ${authoritativeArchitecture}`
+                    );
+                }
+            } else if (settings.model_architecture) {
                 comfyFormElements.model_architecture = settings.model_architecture;
             }
             if (settings.workflow_variant && comfyFormElements.workflow_variant) {
@@ -1541,25 +1553,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
-                // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
-                const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
-
-                // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
-                // [v18.18 修正] 新增 zib 架構保留
-                if (model.architecture === 'zit' || model.architecture === 'zib' || model.architecture === 'anima') {
-                    // Do nothing, keep 'zit' / 'zib' / 'anima'
-                } else if (modelNameLower.includes('qwen')) {
-                    model.architecture = 'qwen';
-                    model.isQwen = true;
-                } else if (modelNameLower.includes('flux')) {
-                    model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
-                } else if (modelNameLower.includes('sd3')) {
-                    model.architecture = 'sd3';
-                } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
-                    model.architecture = 'sdxl';
-                } else {
-                    model.architecture = 'sd15';
+                // 後端的 architecture 是權威值；前端只在欄位缺失時做最低限度後備判定。
+                if (!model.architecture) {
+                    if (modelNameLower.includes('anima') || modelNameLower.includes('yume')) {
+                        model.architecture = 'anima';
+                    } else if (modelNameLower.includes('qwen')) {
+                        model.architecture = 'qwen';
+                    } else if (modelNameLower.includes('flux')) {
+                        model.architecture = modelNameLower.endsWith('.gguf') ? 'flux_gguf' : 'flux_safetensors';
+                    } else if (modelNameLower.includes('pony')) {
+                        model.architecture = 'pony';
+                    } else {
+                        model.architecture = 'sdxl';
+                    }
                 }
+                model.isQwen = model.architecture === 'qwen' || modelNameLower.includes('qwen');
+
+                const baseName = model.name.split(/[\\/]/).pop();
+                checkpointArchitectureByName.set(model.name, model.architecture);
+                checkpointArchitectureByName.set(baseName, model.architecture);
                 return model;
             });
 
