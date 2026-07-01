@@ -40,8 +40,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // --- 元素選擇器 (ComfyUI - 參數設定) ---
-    const checkpointArchitectureByName = new Map();
-
     const comfyFormElements = {
         model: null,
         model_architecture: 'sdxl',
@@ -55,6 +53,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         seed: getById('comfy-seed'),
         seed_behavior: getById('comfy-seed-behavior'),
         batch_size: getById('comfy-batch-size'),
+        width: getById('comfy-width'),
+        height: getById('comfy-height'),
         steps: getById('comfy-steps'),
         cfg: getById('comfy-cfg'),
         sampler_name: getById('comfy-sampler-name'),
@@ -170,6 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fixed_prompt: getById('modal-fixed-prompt'),
         final_positive_prompt: getById('modal-final-positive-prompt'),
         negative_prompt: getById('modal-negative-prompt'),
+        resolution: getById('modal-resolution'),
         seed: getById('modal-seed'),
         steps: getById('modal-steps'),
         cfg: getById('modal-cfg'),
@@ -1178,6 +1179,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         element.value = value;
     }
 
+    function setGenerationDimensions(width, height) {
+        if (comfyFormElements.width && Number.isFinite(width)) comfyFormElements.width.value = width;
+        if (comfyFormElements.height && Number.isFinite(height)) comfyFormElements.height.value = height;
+    }
+
+    function inferRecommendedDimensions(modelName, architecture) {
+        const nameLower = (modelName || '').toLowerCase();
+        const archLower = (architecture || '').toLowerCase();
+
+        if (archLower === 'anima') {
+            if (nameLower.includes('animayume')) {
+                return { width: 832, height: 1216 };
+            }
+            return { width: 920, height: 1536 };
+        }
+
+        if (archLower === 'zit' || archLower === 'zib' || archLower === 'qwen' || archLower === 'sdxl' || archLower === 'pony') {
+            return { width: 1024, height: 1024 };
+        }
+
+        return { width: 1024, height: 1024 };
+    }
+
     // 函式功能：將當前介面上的所有參數設定儲存到後端
     async function saveSettings() {
         // [v18.18 修正] 獲取負面提示詞開關狀態
@@ -1198,6 +1222,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             seed: getIntInputValue(comfyFormElements.seed, 0),
             seed_behavior: comfyFormElements.seed_behavior ? comfyFormElements.seed_behavior.value : 'increment',
             batch_size: getIntInputValue(comfyFormElements.batch_size, 1),
+            width: getIntInputValue(comfyFormElements.width, 1024),
+            height: getIntInputValue(comfyFormElements.height, 1024),
             steps: getIntInputValue(comfyFormElements.steps, 20),
             cfg: getFloatInputValue(comfyFormElements.cfg, 8.0),
             sampler_name: comfyFormElements.sampler_name ? comfyFormElements.sampler_name.value : 'euler',
@@ -1257,18 +1283,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.model = settings.model;
                 if (comfySelectedModelName) comfySelectedModelName.textContent = settings.model.split(/[\\/]/).pop();
             }
-            const savedModelBaseName = (settings.model || '').split(/[\\/]/).pop();
-            const authoritativeArchitecture = checkpointArchitectureByName.get(settings.model)
-                || checkpointArchitectureByName.get(savedModelBaseName);
-            if (authoritativeArchitecture) {
-                comfyFormElements.model_architecture = authoritativeArchitecture;
-                if (settings.model_architecture !== authoritativeArchitecture) {
-                    console.warn(
-                        `[模型路由修正] 已將舊設定架構 ${settings.model_architecture} 修正為 ${authoritativeArchitecture}`
-                    );
-                }
-            } else if (settings.model_architecture) {
+            if (settings.model_architecture) {
                 comfyFormElements.model_architecture = settings.model_architecture;
+            }
+
+            if (!settings.width || !settings.height) {
+                const restoredDimensions = inferRecommendedDimensions(settings.model || comfyFormElements.model, settings.model_architecture || comfyFormElements.model_architecture);
+                setGenerationDimensions(restoredDimensions.width, restoredDimensions.height);
             }
             if (settings.workflow_variant && comfyFormElements.workflow_variant) {
                 comfyFormElements.workflow_variant.value = settings.workflow_variant;
@@ -1306,6 +1327,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 comfyFormElements.seed_behavior.dispatchEvent(new Event('change'));
             }
             setInputValueIfDefined(comfyFormElements.batch_size, settings.batch_size);
+            setInputValueIfDefined(comfyFormElements.width, settings.width);
+            setInputValueIfDefined(comfyFormElements.height, settings.height);
             setInputValueIfDefined(comfyFormElements.steps, settings.steps);
             setInputValueIfDefined(comfyFormElements.cfg, settings.cfg);
             setInputValueIfDefined(comfyFormElements.sampler_name, settings.sampler_name);
@@ -1553,25 +1576,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             checkpoints = checkpoints.map(model => {
                 const modelNameLower = model.name.toLowerCase();
 
-                // 後端的 architecture 是權威值；前端只在欄位缺失時做最低限度後備判定。
-                if (!model.architecture) {
-                    if (modelNameLower.includes('anima') || modelNameLower.includes('yume')) {
-                        model.architecture = 'anima';
-                    } else if (modelNameLower.includes('qwen')) {
-                        model.architecture = 'qwen';
-                    } else if (modelNameLower.includes('flux')) {
-                        model.architecture = modelNameLower.endsWith('.gguf') ? 'flux_gguf' : 'flux_safetensors';
-                    } else if (modelNameLower.includes('pony')) {
-                        model.architecture = 'pony';
-                    } else {
-                        model.architecture = 'sdxl';
-                    }
-                }
-                model.isQwen = model.architecture === 'qwen' || modelNameLower.includes('qwen');
+                // [v18.16 修正] 移除前端對 qwen 路徑的特殊處理，直接使用後端提供的原始相對路徑
+                const sdxlKeywords = ['sdxl', 'xl', 'il', 'noobai', 'nai', 'pony'];
 
-                const baseName = model.name.split(/[\\/]/).pop();
-                checkpointArchitectureByName.set(model.name, model.architecture);
-                checkpointArchitectureByName.set(baseName, model.architecture);
+                // [v18.17 修正] 優先使用後端判斷的 architecture，如果是 zit 則保留
+                // [v18.18 修正] 新增 zib 架構保留
+                if (model.architecture === 'zit' || model.architecture === 'zib' || model.architecture === 'anima') {
+                    // Do nothing, keep 'zit' / 'zib' / 'anima'
+                } else if (modelNameLower.includes('qwen')) {
+                    model.architecture = 'qwen';
+                    model.isQwen = true;
+                } else if (modelNameLower.includes('flux')) {
+                    model.architecture = modelNameLower.endsWith('.safetensors') ? 'flux_safetensors' : 'flux_gguf';
+                } else if (modelNameLower.includes('sd3')) {
+                    model.architecture = 'sd3';
+                } else if (sdxlKeywords.some(keyword => modelNameLower.includes(keyword))) {
+                    model.architecture = 'sdxl';
+                } else {
+                    model.architecture = 'sd15';
+                }
                 return model;
             });
 
@@ -1582,6 +1605,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!comfyFormElements.model && checkpoints.length > 0) {
                 comfyFormElements.model = checkpoints[0].name;
                 comfyFormElements.model_architecture = checkpoints[0].architecture;
+                const defaultDimensions = inferRecommendedDimensions(checkpoints[0].name, checkpoints[0].architecture);
+                setGenerationDimensions(defaultDimensions.width, defaultDimensions.height);
                 if (comfySelectedModelName) comfySelectedModelName.textContent = checkpoints[0].name.split(/[\\/]/).pop();
             }
             await updateLoraListForModel(comfyFormElements.model);
@@ -1826,9 +1851,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isZITModel = newArchitecture === 'zit';
         const isZIBModel = newArchitecture === 'zib';
         const isAnimaModel = newArchitecture === 'anima';
+        const recommendedDimensions = inferRecommendedDimensions(newModel, newArchitecture);
 
         if (isQwenModel) {
             // Qwen 模型特殊處理
+            setGenerationDimensions(recommendedDimensions.width, recommendedDimensions.height);
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
 
             if (comfyFormElements.positive_prompt) {
@@ -1845,6 +1872,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (comfyStatusText) comfyStatusText.textContent = 'Qwen 模式已啟用';
         } else if (isZITModel) {
             // [v2.1] ZIT 模型特殊處理
+            setGenerationDimensions(recommendedDimensions.width, recommendedDimensions.height);
             // [v36.0] 官方 Z-Image 推薦: steps=8, cfg=0 (DMD distilled 模型不使用 CFG)
             // 來源: https://github.com/Tongyi-MAI/Z-Image (num_inference_steps=9, guidance_scale=0.0)
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
@@ -1867,6 +1895,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } else if (isZIBModel) {
             // [v2.3] ZIB 模型特殊處理
+            setGenerationDimensions(recommendedDimensions.width, recommendedDimensions.height);
             // [v36.0] 官方 Z-Image 推薦: steps=28-50, cfg=3-5, scheduler=simple, negative_prompt 強烈推薦
             // 來源: https://github.com/Tongyi-MAI/Z-Image (num_inference_steps=50, guidance_scale=4)
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'ae.safetensors';
@@ -1889,6 +1918,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } else if (isAnimaModel) {
             // Anima/AnimaYume 模型特殊處理
+            setGenerationDimensions(recommendedDimensions.width, recommendedDimensions.height);
             if (comfyFormElements.vae) comfyFormElements.vae.value = 'qwen_image_vae.safetensors';
 
             // 套用推薦預設值
@@ -1909,6 +1939,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } else {
             // [v2.0 新增] 對於所有非 Qwen/ZIT 模型，將 VAE 重設為預設值
+            setGenerationDimensions(recommendedDimensions.width, recommendedDimensions.height);
             if (comfyFormElements.vae) {
                 comfyFormElements.vae.value = 'model_embedded';
                 console.log('通用模型已選擇，VAE 已自動重設為 "模型內建 VAE"。');
@@ -2065,6 +2096,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             removeHistoryItemElement(historyItemDiv);
         }, { once: true });
 
+        const resolutionBadge = createHistoryResolutionBadge(historyItemDiv, item, mediaElement);
+
         const selectionOverlay = document.createElement('div');
         selectionOverlay.className = 'selection-overlay';
         selectionOverlay.innerHTML = `<i class="bi bi-check-circle-fill selection-icon"></i>`;
@@ -2093,7 +2126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         historyItemDiv.prepend(mediaElement);
-        historyItemDiv.append(selectionOverlay, deleteBtn);
+        historyItemDiv.append(resolutionBadge, selectionOverlay, deleteBtn);
 
         comfyHistoryGrid.appendChild(historyItemDiv);
 
@@ -2539,8 +2572,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             scheduler: comfyFormElements.scheduler ? comfyFormElements.scheduler.value : 'normal',
             workflow_variant: comfyFormElements.workflow_variant ? comfyFormElements.workflow_variant.value : 'standard',
             batch_size: getIntInputValue(comfyFormElements.batch_size, 1),
-            width: 1024,
-            height: 1024,
+            width: getIntInputValue(comfyFormElements.width, 1024),
+            height: getIntInputValue(comfyFormElements.height, 1024),
             denoise: getFloatInputValue(comfyFormElements.denoise, 1.0),
             source_image: img2imgState.source_image,
             inpaint_mask: img2imgState.inpaint_mask,
@@ -2800,6 +2833,63 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function extractResolutionFromItem(item, mediaElement = null) {
+        const params = item?.params || {};
+        const width = Number(params.width || item?.width || 0);
+        const height = Number(params.height || item?.height || 0);
+
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+            return { width, height, text: `${width} × ${height}` };
+        }
+
+        if (mediaElement) {
+            const mediaWidth = Number(mediaElement.naturalWidth || mediaElement.videoWidth || 0);
+            const mediaHeight = Number(mediaElement.naturalHeight || mediaElement.videoHeight || 0);
+            if (Number.isFinite(mediaWidth) && Number.isFinite(mediaHeight) && mediaWidth > 0 && mediaHeight > 0) {
+                return { width: mediaWidth, height: mediaHeight, text: `${mediaWidth} × ${mediaHeight}` };
+            }
+        }
+
+        return null;
+    }
+
+    function applyResolvedDimensionsToItem(item, resolution) {
+        if (!item || !resolution) return;
+        if (!item.params) item.params = {};
+        item.params.width = resolution.width;
+        item.params.height = resolution.height;
+    }
+
+    function createHistoryResolutionBadge(historyItemDiv, item, mediaElement) {
+        const badge = document.createElement('div');
+        badge.className = 'history-resolution-badge';
+
+        const updateBadge = () => {
+            const resolution = extractResolutionFromItem(item, mediaElement);
+            if (resolution) {
+                badge.textContent = resolution.text;
+                badge.style.display = 'block';
+                applyResolvedDimensionsToItem(item, resolution);
+                historyItemDiv.dataset.historyItem = JSON.stringify(item);
+            } else {
+                badge.style.display = 'none';
+            }
+        };
+
+        updateBadge();
+        mediaElement.addEventListener('load', updateBadge);
+        mediaElement.addEventListener('loadedmetadata', updateBadge);
+
+        return badge;
+    }
+
+    function updateModalResolution(item) {
+        if (!modalParams.resolution) return;
+        const resolution = extractResolutionFromItem(item, modalImage);
+        modalParams.resolution.textContent = resolution ? resolution.text : '未知';
+        if (resolution) applyResolvedDimensionsToItem(item, resolution);
+    }
+
     // 中文註釋：showImageInModal函式開始
     // 函式功能：在燈箱 (Modal) 中顯示指定索引的圖片或影片及其詳細資訊
     function showImageInModal(index) {
@@ -2823,6 +2913,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         const fullItemUrl = new URL(item.url, activeDeviceUrl).href;
+        modalImage.onload = () => updateModalResolution(item);
         modalImage.src = fullItemUrl;
         modalImage.style.display = 'block';
 
@@ -2904,6 +2995,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         modalParams.final_positive_prompt.textContent = params.positive_prompt || '';
         modalParams.negative_prompt.textContent = params.negative_prompt || '';
+        updateModalResolution(item);
 
         const otherParams = ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler'];
         otherParams.forEach(key => {
@@ -3579,6 +3671,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (bsLoraSelectionModal) bsLoraSelectionModal.hide();
             });
         }
+
+        const comfySizeSwapBtn = getById('comfy-size-swap-btn');
+        if (comfySizeSwapBtn) {
+            comfySizeSwapBtn.addEventListener('click', () => {
+                const currentWidth = getIntInputValue(comfyFormElements.width, 1024);
+                const currentHeight = getIntInputValue(comfyFormElements.height, 1024);
+                setGenerationDimensions(currentHeight, currentWidth);
+            });
+        }
+
+        document.querySelectorAll('[data-size-preset]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const width = parseInt(btn.dataset.width || '', 10);
+                const height = parseInt(btn.dataset.height || '', 10);
+                if (Number.isFinite(width) && Number.isFinite(height)) {
+                    setGenerationDimensions(width, height);
+                }
+            });
+        });
 
         if (modelSelectionModal) {
             modelSelectionModal.addEventListener('show.bs.modal', async () => {

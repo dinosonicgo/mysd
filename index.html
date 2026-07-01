@@ -152,6 +152,24 @@
             box-shadow: 0 0 12px rgba(13, 110, 253, 0.7);
         }
 
+        .history-item .history-resolution-badge {
+            position: absolute;
+            left: 6px;
+            bottom: 6px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            line-height: 1.2;
+            z-index: 6;
+            pointer-events: none;
+            max-width: calc(100% - 36px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .history-item .delete-btn {
             position: absolute;
             top: 5px;
@@ -1035,6 +1053,32 @@
                                         <input type="number" class="form-control" id="comfy-batch-size" value="1"
                                             min="1" max="20">
                                     </div>
+                                    <div class="mb-3">
+                                        <label class="form-label d-flex justify-content-between align-items-center">
+                                            <span>生圖尺寸</span>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="comfy-size-swap-btn">
+                                                <i class="bi bi-arrow-left-right"></i> 寬高互換
+                                            </button>
+                                        </label>
+                                        <div class="row g-2">
+                                            <div class="col-6">
+                                                <label for="comfy-width" class="form-label small text-muted">寬度</label>
+                                                <input type="number" class="form-control" id="comfy-width" value="1024" min="64" step="8">
+                                            </div>
+                                            <div class="col-6">
+                                                <label for="comfy-height" class="form-label small text-muted">高度</label>
+                                                <input type="number" class="form-control" id="comfy-height" value="1024" min="64" step="8">
+                                            </div>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2 mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-size-preset data-width="1024" data-height="1024">1024 × 1024</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-size-preset data-width="832" data-height="1216">832 × 1216</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-size-preset data-width="920" data-height="1536">920 × 1536</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-size-preset data-width="1216" data-height="832">1216 × 832</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-size-preset data-width="1536" data-height="920">1536 × 920</button>
+                                        </div>
+                                        <small class="form-text text-muted">切換模型時會自動帶入建議尺寸；你也可以手動修改。</small>
+                                    </div>
 
                                 </div>
                                 <!-- 圖像輸入頁籤 -->
@@ -1617,6 +1661,10 @@
                     </div>
                     <div class="row">
                         <div class="col-md-12 param-group">
+                            <span class="param-label">解析度: </span>
+                            <span class="param-value" id="modal-resolution"></span>
+                        </div>
+                        <div class="col-md-12 param-group">
                             <span class="param-label">種子 (Seed): </span>
                             <span class="param-value" id="modal-seed"></span>
                         </div>
@@ -1905,7 +1953,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/app.js?v=1782921230"></script>
+    <script src="js/app.js?v=1782925697"></script>
 </body>
 
 </html>
