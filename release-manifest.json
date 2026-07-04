@@ -1,16 +1,16 @@
 {
   "schema": 1,
   "version": "3.6.72",
-  "fingerprint": "2857d1f41e6d912d",
-  "cache_key": "3.6.72-2857d1f41e6d912d",
+  "fingerprint": "3bb01d4ceb6c65e6",
+  "cache_key": "3.6.72-3bb01d4ceb6c65e6",
   "assets": {
     "index": {
       "path": "index.html",
-      "sha256": "551039318f86e7cd7b63138e45806722424202100d1e5794aab5967905680b85"
+      "sha256": "3c79e31def6c86eebae16bed6945727426fd4c43611b94871447b93c377615b0"
     },
     "app": {
       "path": "js/app.js",
-      "sha256": "660addd5e8f326dc0116a9f5f9069ff3798cb457428c3a0b4722310415df912a"
+      "sha256": "44b4c1f5ff34799c48cf8f3894a07c5ca6f1d83244bd30928a809334379b6858"
     },
     "service_worker": {
       "path": "sw.js",

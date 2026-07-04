@@ -293,6 +293,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         return null;
     }
 
+    function getCurrentEntryCacheKey() {
+        const scripts = Array.from(document.scripts || []);
+        for (const script of scripts) {
+            const src = script.getAttribute('src') || '';
+            if (!src.includes('js/app.js')) continue;
+            try {
+                const scriptUrl = new URL(src, window.location.href);
+                return scriptUrl.searchParams.get('v') || '';
+            } catch (error) {
+                const match = src.match(/[?&]v=([^&]+)/);
+                return match ? decodeURIComponent(match[1]) : '';
+            }
+        }
+        return '';
+    }
+
     async function enforceFrontendRelease(baseUrl = window.location.origin) {
         try {
             const manifest = await fetchReleaseManifest(baseUrl);
@@ -300,16 +316,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const previousKey = localStorage.getItem(FRONTEND_RELEASE_STORAGE_KEY);
             const isReloading = sessionStorage.getItem(FRONTEND_RELOAD_FLAG_KEY) === manifest.cache_key;
-            localStorage.setItem(FRONTEND_RELEASE_STORAGE_KEY, manifest.cache_key);
+            const currentEntryCacheKey = getCurrentEntryCacheKey();
+            const entryIsStale = Boolean(currentEntryCacheKey && currentEntryCacheKey !== manifest.cache_key);
+            const knownReleaseChanged = Boolean(previousKey && previousKey !== manifest.cache_key);
 
-            if (previousKey && previousKey !== manifest.cache_key && !isReloading) {
+            if ((entryIsStale || knownReleaseChanged) && !isReloading) {
                 sessionStorage.setItem(FRONTEND_RELOAD_FLAG_KEY, manifest.cache_key);
+                localStorage.setItem(FRONTEND_RELEASE_STORAGE_KEY, manifest.cache_key);
                 await clearBrowserAssetCaches();
                 const url = new URL(window.location.href);
                 url.searchParams.set('app_v', manifest.cache_key);
                 window.location.replace(url.href);
                 return;
             }
+
+            localStorage.setItem(FRONTEND_RELEASE_STORAGE_KEY, manifest.cache_key);
 
             if (isReloading) {
                 sessionStorage.removeItem(FRONTEND_RELOAD_FLAG_KEY);
