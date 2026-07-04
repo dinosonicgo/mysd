@@ -261,6 +261,63 @@ document.addEventListener('DOMContentLoaded', async () => {
     let clientId = '';
     let deviceHistoryCache = {};
     let currentHistoryObserver = null;
+    let generationSubmitStartedAt = 0;
+    let isQueuedWithoutPrompt = false;
+    const FRONTEND_RELEASE_STORAGE_KEY = 'personal_server_frontend_release_cache_key';
+    const FRONTEND_RELOAD_FLAG_KEY = 'personal_server_frontend_release_reloading';
+
+    async function clearBrowserAssetCaches() {
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(registration => registration.update()));
+        }
+        if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
+        }
+    }
+
+    async function fetchReleaseManifest(baseUrl = window.location.origin) {
+        const apiUrl = new URL(`/api/release-manifest?t=${Date.now()}`, baseUrl).href;
+        try {
+            const response = await fetch(apiUrl, { cache: 'no-store' });
+            if (response.ok) return response.json();
+        } catch (error) {
+            console.debug('後端 release manifest 不可用，改查靜態 manifest。', error);
+        }
+
+        if (baseUrl === window.location.origin) {
+            const response = await fetch(`release-manifest.json?t=${Date.now()}`, { cache: 'no-store' });
+            if (response.ok) return response.json();
+        }
+        return null;
+    }
+
+    async function enforceFrontendRelease(baseUrl = window.location.origin) {
+        try {
+            const manifest = await fetchReleaseManifest(baseUrl);
+            if (!manifest || !manifest.cache_key) return;
+
+            const previousKey = localStorage.getItem(FRONTEND_RELEASE_STORAGE_KEY);
+            const isReloading = sessionStorage.getItem(FRONTEND_RELOAD_FLAG_KEY) === manifest.cache_key;
+            localStorage.setItem(FRONTEND_RELEASE_STORAGE_KEY, manifest.cache_key);
+
+            if (previousKey && previousKey !== manifest.cache_key && !isReloading) {
+                sessionStorage.setItem(FRONTEND_RELOAD_FLAG_KEY, manifest.cache_key);
+                await clearBrowserAssetCaches();
+                const url = new URL(window.location.href);
+                url.searchParams.set('app_v', manifest.cache_key);
+                window.location.replace(url.href);
+                return;
+            }
+
+            if (isReloading) {
+                sessionStorage.removeItem(FRONTEND_RELOAD_FLAG_KEY);
+            }
+        } catch (error) {
+            console.warn('檢查前端版本失敗，保留目前頁面避免中斷操作。', error);
+        }
+    }
 
     function getCurrentHistoryDeviceId() {
         return userContext.user_type === 'gm'
@@ -746,6 +803,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             activeDeviceUrl = deviceInfo.url;
             localStorage.setItem('gm_last_device', deviceId);
+            await enforceFrontendRelease(activeDeviceUrl);
 
             updateDeviceSelectorUI(deviceId);
 
@@ -2499,11 +2557,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             comfyStatusText.style.display = 'block';
         }
         trackedPromptId = null;
+        isQueuedWithoutPrompt = false;
+        generationSubmitStartedAt = 0;
     };
 
     function setGeneratingState(promptId) {
         if (!promptId) return;
         trackedPromptId = promptId;
+        isQueuedWithoutPrompt = false;
         if (comfyGenerateBtn) comfyGenerateBtn.disabled = true;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
@@ -2542,6 +2603,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         comfyGenerateBtn.disabled = true;
+        generationSubmitStartedAt = Date.now();
+        isQueuedWithoutPrompt = false;
         if (comfySpinner) comfySpinner.style.display = 'inline-block';
         if (comfyStatusText) {
             comfyStatusText.textContent = '正在提交任務...';
@@ -2651,11 +2714,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (result && result.prompt_id) {
                 setGeneratingState(result.prompt_id);
             } else if (result && result.status === 'queued') {
+                isQueuedWithoutPrompt = true;
                 if (comfyStatusText) {
                     comfyStatusText.textContent = `✅ ${result.message}`;
                     comfyStatusText.classList.add('text-success');
                 }
-                if (comfySpinner) comfySpinner.style.display = 'inline-block';
+                if (comfySpinner) comfySpinner.style.display = 'none';
+                if (comfyGenerateBtn) comfyGenerateBtn.disabled = false;
             } else {
                 throw new Error('後端響應格式不正確。');
             }
@@ -2809,6 +2874,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     connectStatusWebSocket(activePromptId);
                 }
             } else {
+                if (isQueuedWithoutPrompt) {
+                    if (comfySpinner) comfySpinner.style.display = 'none';
+                    if (comfyGenerateBtn) comfyGenerateBtn.disabled = false;
+                    if (Date.now() - generationSubmitStartedAt > 60000) {
+                        isQueuedWithoutPrompt = false;
+                    }
+                }
                 if (data.status === 'error' && trackedPromptId && data.prompt_id === trackedPromptId) {
                     if (comfyStatusText) {
                         comfyStatusText.textContent = `錯誤: ${data.error_message || '任務執行失敗。'}`;
@@ -3413,6 +3485,7 @@ document.addEventListener('DOMContentLoaded', async () => {
          *      点击后会呼叫新的后端 API，并使用 WebSocket 接收和显示批量下载的状态。
          */
         console.log('應用程式已初始化 v18.1');
+        await enforceFrontendRelease(window.location.origin);
 
         clientId = getClientId();
         console.log(`客戶端 ID 已設定為: ${clientId}`);
@@ -3420,6 +3493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if ('serviceWorker' in navigator) {
             try {
                 serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
+                await serviceWorkerRegistration.update();
             } catch (error) {
                 console.error('Service Worker 註冊失敗:', error);
             }

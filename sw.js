@@ -1,5 +1,18 @@
 // static/js/sw.js
 
+self.addEventListener('install', event => {
+    event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', event => {
+    event.waitUntil((async () => {
+        if (self.registration.navigationPreload) {
+            await self.registration.navigationPreload.enable();
+        }
+        await clients.claim();
+    })());
+});
+
 // 函式功能：監聽 'push' 事件，當從伺服器接收到推播訊息時觸發
 self.addEventListener('push', event => {
     console.log('[Service Worker] Push Received.');
