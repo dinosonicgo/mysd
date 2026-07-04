@@ -6,15 +6,24 @@
   "assets": {
     "index": {
       "path": "index.html",
-      "sha256": "29cd12f0e37f24e51a8832d666ffebd1ed0b093ddcf2c62e07e4a80089b0b663"
+      "exists": true,
+      "sha256": "29cd12f0e37f24e51a8832d666ffebd1ed0b093ddcf2c62e07e4a80089b0b663",
+      "mtime": 1783161450,
+      "size": 104119
     },
     "app": {
       "path": "js/app.js",
-      "sha256": "d7339a816f0899ec71bdb11dbd45bd93efbdf15777e1c35160c9179549ea20be"
+      "exists": true,
+      "sha256": "d7339a816f0899ec71bdb11dbd45bd93efbdf15777e1c35160c9179549ea20be",
+      "mtime": 1783150245,
+      "size": 215701
     },
     "service_worker": {
-      "path": "sw.js",
-      "sha256": "f25c03fb3de3a36484df483589f4d8c4d594c52979141f0f5c4b211a321d3741"
+      "path": "js/sw.js",
+      "exists": true,
+      "sha256": "f25c03fb3de3a36484df483589f4d8c4d594c52979141f0f5c4b211a321d3741",
+      "mtime": 1783148755,
+      "size": 3017
     }
   }
 }
