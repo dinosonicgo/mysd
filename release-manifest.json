@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "version": "1.0.0",
-  "fingerprint": "7915242ffa898cdf",
-  "cache_key": "1.0.0-7915242ffa898cdf",
+  "version": "3.6.72",
+  "fingerprint": "2857d1f41e6d912d",
+  "cache_key": "3.6.72-2857d1f41e6d912d",
   "assets": {
     "index": {
       "path": "index.html",
-      "sha256": "14aab789882ddc85c780cd86d481479ce12a58cb7ba27acfdf0b205be4613440"
+      "sha256": "551039318f86e7cd7b63138e45806722424202100d1e5794aab5967905680b85"
     },
     "app": {
       "path": "js/app.js",
