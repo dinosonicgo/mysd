@@ -3542,6 +3542,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadSharedConfigAndInitialize();
 
         setInterval(pollQueueStatus, 3000);
+        setInterval(() => enforceFrontendRelease(window.location.origin), 60000);
 
         // --- 初始化 Bootstrap Modals ---
         if (modelSelectionModal) bsModelSelectionModal = new bootstrap.Modal(modelSelectionModal);
